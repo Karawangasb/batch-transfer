@@ -1,99 +1,79 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Polygon Multi-Hop Arbitrage Scanner</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>RTMX Liquidity Checker</title>
+  <script src="https://cdn.ethers.io/lib/ethers-5.7.4.esm.min.js" type="module"></script>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    .loading { color: orange; }
+    .error { color: red; }
+  </style>
 </head>
-<body style="font-family:sans-serif;background:#0d1117;color:white;padding:20px;">
-  <h2>🔁 Polygon Multi-Hop Route Scanner</h2>
-  <p>Uji kombinasi rute hingga 4 hop (misalnya WPOL → USDT → DAI → WETH → WPOL).</p>
+<body>
+  <h2>RTMX Liquidity Checker (Polygon / QuickSwap v2)</h2>
+  <div id="output">Loading...</div>
 
-  <label>Token Awal (address):</label><br>
-  <input id="tokenIn" type="text" value="0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270" size="60"><br><br>
+  <script type="module">
+    // --- Konfigurasi ---
+    const RTMX_ADDRESS = "0xcd3bec5b18c05c48e7b18d31981947f3bed2624d";
+    const WETH_ADDRESS = "0x7ceB23fD6bC0adD7418957c25f3131a794D2A270"; // WETH di Polygon
+    const FACTORY_ADDRESS = "0x5757371414417b8C6CAad45bAeF941aBc7d3Ab32"; // QuickSwap v2 Factory
 
-  <label>Token Akhir (address):</label><br>
-  <input id="tokenOut" type="text" value="0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270" size="60"><br><br>
+    // RPC publik Polygon (tanpa API key, tapi rate-limited)
+    const RPC_URL = "https://polygon-rpc.com/";
 
-  <label>Jumlah (tokenIn):</label><br>
-  <input id="amount" type="number" value="1" step="0.1"><br><br>
+    // --- Fungsi utama ---
+    async function fetchLiquidity() {
+      const output = document.getElementById("output");
+      try {
+        const provider = new ethers.providers.StaticJsonRpcProvider(RPC_URL);
+        const factory = new ethers.Contract(
+          FACTORY_ADDRESS,
+          ["function getPair(address, address) external view returns (address)"],
+          provider
+        );
 
-  <button id="scan">🔎 Scan Multi-Hop</button>
-
-  <pre id="result" style="background:#111;padding:10px;border-radius:8px;margin-top:15px;"></pre>
-
-  <!-- Ethers.js -->
-  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
-
-  <script>
-    const provider = new ethers.providers.JsonRpcProvider("https://polygon-rpc.com");
-    const routerAddr = "0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff"; // QuickSwap V2 Router
-    const abi = ["function getAmountsOut(uint amountIn, address[] calldata path) view returns (uint[] memory amounts)"];
-    const router = new ethers.Contract(routerAddr, abi, provider);
-
-    // Beberapa token populer di Polygon
-    const TOKENS = {
-      WPOL: "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270",
-      USDT: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
-      DAI:  "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063",
-      WETH: "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619",
-      USDC: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"
-    };
-
-    document.getElementById("scan").addEventListener("click", async () => {
-      const tokenIn = document.getElementById("tokenIn").value.trim();
-      const tokenOut = document.getElementById("tokenOut").value.trim();
-      const amount = document.getElementById("amount").value;
-      const resultBox = document.getElementById("result");
-      resultBox.textContent = "Scanning multi-hop routes...\n";
-
-      const amountInWei = ethers.utils.parseUnits(amount, 18);
-      const intermediates = [TOKENS.USDT, TOKENS.DAI, TOKENS.WETH, TOKENS.USDC];
-      const routes = [];
-
-      // 2-hop: tokenIn -> X -> tokenOut
-      intermediates.forEach(i1 => {
-        routes.push([tokenIn, i1, tokenOut]);
-      });
-
-      // 3-hop: tokenIn -> X -> Y -> tokenOut
-      for (let i = 0; i < intermediates.length; i++) {
-        for (let j = 0; j < intermediates.length; j++) {
-          if (i !== j) routes.push([tokenIn, intermediates[i], intermediates[j], tokenOut]);
+        const pairAddress = await factory.getPair(RTMX_ADDRESS, WETH_ADDRESS);
+        if (pairAddress === ethers.constants.AddressZero) {
+          output.innerHTML = "<div class='error'>Pair RTMX/WETH tidak ditemukan.</div>";
+          return;
         }
-      }
 
-      // 4-hop: tokenIn -> X -> Y -> Z -> tokenOut
-      for (let i = 0; i < intermediates.length; i++) {
-        for (let j = 0; j < intermediates.length; j++) {
-          for (let k = 0; k < intermediates.length; k++) {
-            if (i !== j && j !== k && i !== k)
-              routes.push([tokenIn, intermediates[i], intermediates[j], intermediates[k], tokenOut]);
-          }
-        }
-      }
+        const pair = new ethers.Contract(
+          pairAddress,
+          [
+            "function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)",
+            "function token0() external view returns (address)",
+            "function token1() external view returns (address)"
+          ],
+          provider
+        );
 
-      const results = [];
-      for (const path of routes) {
-        try {
-          const amounts = await router.getAmountsOut(amountInWei, path);
-          const out = ethers.utils.formatUnits(amounts[amounts.length - 1], 18);
-          results.push({ path, out: parseFloat(out) });
-          resultBox.textContent += `${path.join(" -> ")} = ${out}\n`;
-        } catch (e) {
-          // skip routes that fail (no liquidity)
-        }
-      }
+        const [reserve0, reserve1] = await pair.getReserves();
+        const token0 = await pair.token0();
+        const isRTMXToken0 = token0.toLowerCase() === RTMX_ADDRESS.toLowerCase();
 
-      // urutkan dari output terbesar
-      results.sort((a, b) => b.out - a.out);
-      const best = results[0];
-      if (best) {
-        resultBox.textContent += `\n🏆 Rute terbaik:\n${best.path.join(" -> ")}\nOutput: ${best.out}`;
-      } else {
-        resultBox.textContent += `\n❌ Tidak ada rute yang valid.`;
+        const rtmxReserve = isRTMXToken0 ? reserve0 : reserve1;
+        const wethReserve = isRTMXToken0 ? reserve1 : reserve0;
+
+        const rtmxFormatted = ethers.utils.formatUnits(rtmxReserve, 18);
+        const wethFormatted = ethers.utils.formatUnits(wethReserve, 18);
+
+        output.innerHTML = `
+          <p><strong>Pair Address:</strong> ${pairAddress}</p>
+          <p><strong>RTMX Reserve:</strong> ${parseFloat(rtmxFormatted).toLocaleString()} RTMX</p>
+          <p><strong>WETH Reserve:</strong> ${parseFloat(wethFormatted).toLocaleString()} WETH</p>
+          <p><em>Nilai likuiditas dapat dikonversi ke USD jika Anda menghubungkan harga WETH.</em></p>
+        `;
+      } catch (err) {
+        console.error(err);
+        output.innerHTML = `<div class='error'>Error: ${err.message}</div>`;
       }
-    });
+    }
+
+    fetchLiquidity();
   </script>
 </body>
 </html>
