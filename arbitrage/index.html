@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>RTMX Liquidity Checker</title>
-  <script src="https://cdn.ethers.io/lib/ethers-5.7.4.esm.min.js" type="module"></script>
   <style>
     body {
       font-family: 'Segoe UI', sans-serif;
@@ -73,6 +72,9 @@
   </table>
 
   <script type="module">
+    // ✅ Import ethers dari CDN sebagai modul
+    import { ethers } from "https://cdn.ethers.io/lib/ethers-5.7.esm.min.js";
+
     // --- Konfigurasi ---
     const RTMX = "0xcd3bec5b18c05c48e7b18d31981947f3bed2624d";
     const FACTORY = "0x5757371414417b8C6CAad45bAeF941aBc7d3Ab32"; // QuickSwap v2
@@ -91,42 +93,45 @@
       { symbol: "BabyPol",  address: "0x3fB009dd27fBc4e2cf183b65279363967a1E8182" }
     ];
 
-    const provider = new ethers.providers.StaticJsonRpcProvider(RPC_URL);
-    const factory = new ethers.Contract(
-      FACTORY,
-      ["function getPair(address, address) external view returns (address)"],
-      provider
-    );
-
-    const pairAbi = [
-      "function getReserves() view returns (uint112, uint112, uint32)",
-      "function token0() view returns (address)"
-    ];
+    // DOM elements
+    const btn = document.getElementById("checkBtn");
+    const statusEl = document.getElementById("status");
+    const table = document.getElementById("liquidityTable");
+    const tbody = document.getElementById("tableBody");
 
     async function formatReserve(reserve, isRTMX) {
       try {
         const formatted = ethers.utils.formatUnits(reserve, 18);
         const num = parseFloat(formatted);
-        return isRTMX ? num.toLocaleString(undefined, { maximumFractionDigits: 6 }) : num.toLocaleString(undefined, { maximumFractionDigits: 2 });
+        return isRTMX 
+          ? num.toLocaleString(undefined, { maximumFractionDigits: 6 }) 
+          : num.toLocaleString(undefined, { maximumFractionDigits: 2 });
       } catch {
         return "0";
       }
     }
 
     async function checkLiquidity() {
-      const btn = document.getElementById("checkBtn");
-      const status = document.getElementById("status");
-      const table = document.getElementById("liquidityTable");
-      const tbody = document.getElementById("tableBody");
-
-      // Reset tampilan
+      // Reset UI
       btn.disabled = true;
-      status.textContent = "Sedang memeriksa likuiditas...";
-      status.className = "status loading";
+      statusEl.textContent = "Sedang memeriksa likuiditas...";
+      statusEl.className = "status loading";
       tbody.innerHTML = "";
       table.style.display = "none";
 
       try {
+        const provider = new ethers.providers.StaticJsonRpcProvider(RPC_URL);
+        const factory = new ethers.Contract(
+          FACTORY,
+          ["function getPair(address, address) external view returns (address)"],
+          provider
+        );
+
+        const pairAbi = [
+          "function getReserves() view returns (uint112, uint112, uint32)",
+          "function token0() view returns (address)"
+        ];
+
         let foundAny = false;
 
         for (const pair of PAIRS) {
@@ -172,21 +177,22 @@
           }
         }
 
-        status.textContent = foundAny 
+        statusEl.textContent = foundAny 
           ? "✅ Pengecekan selesai. Likuiditas ditampilkan di bawah." 
           : "ℹ️ Tidak ditemukan likuiditas aktif di pasangan terdaftar.";
-        status.className = "status";
-
+        statusEl.className = "status";
         table.style.display = "table";
+
       } catch (err) {
-        status.textContent = "❌ Terjadi kesalahan: " + (err.message || err);
-        status.className = "status error";
+        console.error("Fatal error:", err);
+        statusEl.textContent = "❌ Error: " + (err.message || "Gagal terhubung ke jaringan.");
+        statusEl.className = "status error";
       } finally {
         btn.disabled = false;
       }
     }
 
-    document.getElementById("checkBtn").addEventListener("click", checkLiquidity);
+    btn.addEventListener("click", checkLiquidity);
   </script>
 </body>
 </html>
