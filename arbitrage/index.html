@@ -1,10 +1,9 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>RTMX Liquidity Checker</title>
-  <!-- Gunakan ethers v5 via jsDelivr (UMD) -->
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
   <style>
     body {
@@ -27,10 +26,7 @@
       margin: 20px 0;
     }
     button:hover { background: #1d4ed8; }
-    button:disabled {
-      background: #9ca3af;
-      cursor: not-allowed;
-    }
+    button:disabled { background: #9ca3af; cursor: not-allowed; }
     table {
       width: 100%;
       border-collapse: collapse;
@@ -38,25 +34,29 @@
     }
     th, td {
       border: 1px solid #ddd;
-      padding: 12px;
+      padding: 10px;
       text-align: left;
     }
-    th {
-      background-color: #f1f5f9;
-    }
-    .status {
-      margin: 10px 0;
-      min-height: 24px;
-    }
+    th { background-color: #f1f5f9; }
+    .status { margin: 10px 0; min-height: 24px; }
     .loading { color: #ea580c; }
     .error { color: #dc2626; }
     .zero { color: #999; font-style: italic; }
+    .dex-label {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 13px;
+      color: white;
+    }
+    .quick { background: #2563eb; }
+    .uni { background: #9333ea; }
     #liquidityTable { display: none; }
   </style>
 </head>
 <body>
-  <h1>RTMX Liquidity Checker (Polygon / QuickSwap v2)</h1>
-  <p>Klik tombol di bawah untuk memeriksa likuiditas RTMX di semua pasangan kustom Anda.</p>
+  <h1>RTMX Liquidity Checker (Polygon)</h1>
+  <p>Klik tombol di bawah untuk memeriksa likuiditas RTMX di QuickSwap v2 dan Uniswap v2 (Polygon).</p>
 
   <button id="checkBtn">Cek Likuiditas</button>
   <div id="status" class="status"></div>
@@ -64,6 +64,7 @@
   <table id="liquidityTable">
     <thead>
       <tr>
+        <th>DEX</th>
         <th>Pair</th>
         <th>RTMX Reserve</th>
         <th>Token Reserve</th>
@@ -74,11 +75,16 @@
   </table>
 
   <script>
-    // ✅ ethers sudah tersedia global karena UMD bundle
     const RTMX = "0xcd3bec5b18c05c48e7b18d31981947f3bed2624d";
-    const FACTORY = "0x5757371414417b8C6CAad45bAeF941aBc7d3Ab32"; // QuickSwap v2
     const RPC_URL = "https://polygon-rpc.com/";
 
+    // 🔹 Dua factory yang akan dicek
+    const FACTORIES = [
+      { name: "QuickSwap v2", address: "0x5757371414417b8C6CAad45bAeF941aBc7d3Ab32", class: "quick" },
+      { name: "Uniswap v2 (Polygon)", address: "0x9e5A52f57b3038F1B8EeE45F28b3C1967e22799C", class: "uni" }
+    ];
+
+    // 🔹 Daftar pasangan token
     const PAIRS = [
       { symbol: "DOLLA",    address: "0xB18Ba93CbD261E5c81E955Ca96A1913F81757DE9" },
       { symbol: "420pepe",  address: "0x345E4245B32c2225D7C54aAc8738a9aE40d94266" },
@@ -96,8 +102,8 @@
       try {
         const formatted = ethers.utils.formatUnits(reserve, 18);
         const num = parseFloat(formatted);
-        return isRTMX 
-          ? num.toLocaleString(undefined, { maximumFractionDigits: 6 }) 
+        return isRTMX
+          ? num.toLocaleString(undefined, { maximumFractionDigits: 6 })
           : num.toLocaleString(undefined, { maximumFractionDigits: 2 });
       } catch {
         return "0";
@@ -116,72 +122,58 @@
       tbody.innerHTML = "";
       table.style.display = "none";
 
+      const provider = new ethers.providers.JsonRpcProvider(RPC_URL);
+      const pairAbi = [
+        "function getReserves() view returns (uint112, uint112, uint32)",
+        "function token0() view returns (address)"
+      ];
+
       try {
-        const provider = new ethers.providers.JsonRpcProvider(RPC_URL);
-        const factory = new ethers.Contract(
-          FACTORY,
-          ["function getPair(address, address) external view returns (address)"],
-          provider
-        );
+        let found = false;
 
-        const pairAbi = [
-          "function getReserves() view returns (uint112, uint112, uint32)",
-          "function token0() view returns (address)"
-        ];
+        for (const factoryInfo of FACTORIES) {
+          const factory = new ethers.Contract(
+            factoryInfo.address,
+            ["function getPair(address, address) external view returns (address)"],
+            provider
+          );
 
-        let foundAny = false;
+          for (const pair of PAIRS) {
+            try {
+              const pairAddr = await factory.getPair(RTMX, pair.address);
 
-        for (const pair of PAIRS) {
-          try {
-            const pairAddr = await factory.getPair(RTMX, pair.address);
-            if (pairAddr === ethers.constants.AddressZero) {
+              if (pairAddr === ethers.constants.AddressZero) continue;
+
+              found = true;
+              const pairContract = new ethers.Contract(pairAddr, pairAbi, provider);
+              const [reserve0, reserve1] = await pairContract.getReserves();
+              const token0 = await pairContract.token0();
+
+              const isRTMXToken0 = token0.toLowerCase() === RTMX.toLowerCase();
+              const rtmxReserve = isRTMXToken0 ? reserve0 : reserve1;
+              const otherReserve = isRTMXToken0 ? reserve1 : reserve0;
+
               const row = tbody.insertRow();
               row.innerHTML = `
+                <td><span class="dex-label ${factoryInfo.class}">${factoryInfo.name}</span></td>
                 <td>RTMX / ${pair.symbol}</td>
-                <td class="zero">0</td>
-                <td class="zero">0</td>
-                <td class="zero">Pair belum dibuat</td>
+                <td>${formatReserve(rtmxReserve, true)} RTMX</td>
+                <td>${formatReserve(otherReserve, false)} ${pair.symbol}</td>
+                <td><a href="https://polygonscan.com/address/${pairAddr}" target="_blank">${pairAddr.substring(0, 6)}...${pairAddr.substring(38)}</a></td>
               `;
-              continue;
+            } catch (err) {
+              console.warn(`Error ${pair.symbol} on ${factoryInfo.name}:`, err);
             }
-
-            foundAny = true;
-            const pairContract = new ethers.Contract(pairAddr, pairAbi, provider);
-            const [reserve0, reserve1] = await pairContract.getReserves();
-            const token0 = await pairContract.token0();
-
-            const isRTMXToken0 = token0.toLowerCase() === RTMX.toLowerCase();
-            const rtmxReserve = isRTMXToken0 ? reserve0 : reserve1;
-            const otherReserve = isRTMXToken0 ? reserve1 : reserve0;
-
-            const rtmxFormatted = formatReserve(rtmxReserve, true);
-            const otherFormatted = formatReserve(otherReserve, false);
-
-            const row = tbody.insertRow();
-            row.innerHTML = `
-              <td>RTMX / ${pair.symbol}</td>
-              <td>${rtmxFormatted} RTMX</td>
-              <td>${otherFormatted} ${pair.symbol}</td>
-              <td><a href="https://polygonscan.com/address/${pairAddr}" target="_blank">${pairAddr.substring(0, 6)}...${pairAddr.substring(38)}</a></td>
-            `;
-          } catch (err) {
-            console.error(`Error on ${pair.symbol}:`, err);
-            const row = tbody.insertRow();
-            row.innerHTML = `
-              <td>RTMX / ${pair.symbol}</td>
-              <td colspan="3" class="error">Gagal memuat data</td>
-            `;
           }
         }
 
-        statusEl.textContent = foundAny 
-          ? "✅ Pengecekan selesai. Likuiditas ditampilkan di bawah." 
-          : "ℹ️ Tidak ditemukan likuiditas aktif di pasangan terdaftar.";
+        statusEl.textContent = found
+          ? "✅ Likuiditas ditemukan di salah satu DEX. Lihat tabel di bawah."
+          : "ℹ️ Tidak ditemukan likuiditas di kedua DEX.";
         statusEl.className = "status";
         table.style.display = "table";
 
       } catch (err) {
-        console.error("Fatal error:", err);
         statusEl.textContent = "❌ Error: " + (err.message || "Gagal terhubung ke jaringan.");
         statusEl.className = "status error";
       } finally {
@@ -193,13 +185,3 @@
   </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
