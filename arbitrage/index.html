@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>RTMX Liquidity Checker</title>
+  <!-- Gunakan ethers v5 via jsDelivr (UMD) -->
+  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
   <style>
     body {
       font-family: 'Segoe UI', sans-serif;
@@ -71,11 +73,8 @@
     <tbody id="tableBody"></tbody>
   </table>
 
-  <script type="module">
-    // ✅ Import ethers dari CDN sebagai modul
-    import { ethers } from "https://cdn.ethers.io/lib/ethers-5.7.esm.min.js";
-
-    // --- Konfigurasi ---
+  <script>
+    // ✅ ethers sudah tersedia global karena UMD bundle
     const RTMX = "0xcd3bec5b18c05c48e7b18d31981947f3bed2624d";
     const FACTORY = "0x5757371414417b8C6CAad45bAeF941aBc7d3Ab32"; // QuickSwap v2
     const RPC_URL = "https://polygon-rpc.com/";
@@ -93,13 +92,7 @@
       { symbol: "BabyPol",  address: "0x3fB009dd27fBc4e2cf183b65279363967a1E8182" }
     ];
 
-    // DOM elements
-    const btn = document.getElementById("checkBtn");
-    const statusEl = document.getElementById("status");
-    const table = document.getElementById("liquidityTable");
-    const tbody = document.getElementById("tableBody");
-
-    async function formatReserve(reserve, isRTMX) {
+    function formatReserve(reserve, isRTMX) {
       try {
         const formatted = ethers.utils.formatUnits(reserve, 18);
         const num = parseFloat(formatted);
@@ -112,7 +105,11 @@
     }
 
     async function checkLiquidity() {
-      // Reset UI
+      const btn = document.getElementById("checkBtn");
+      const statusEl = document.getElementById("status");
+      const table = document.getElementById("liquidityTable");
+      const tbody = document.getElementById("tableBody");
+
       btn.disabled = true;
       statusEl.textContent = "Sedang memeriksa likuiditas...";
       statusEl.className = "status loading";
@@ -120,7 +117,7 @@
       table.style.display = "none";
 
       try {
-        const provider = new ethers.providers.StaticJsonRpcProvider(RPC_URL);
+        const provider = new ethers.providers.JsonRpcProvider(RPC_URL);
         const factory = new ethers.Contract(
           FACTORY,
           ["function getPair(address, address) external view returns (address)"],
@@ -157,8 +154,8 @@
             const rtmxReserve = isRTMXToken0 ? reserve0 : reserve1;
             const otherReserve = isRTMXToken0 ? reserve1 : reserve0;
 
-            const rtmxFormatted = await formatReserve(rtmxReserve, true);
-            const otherFormatted = await formatReserve(otherReserve, false);
+            const rtmxFormatted = formatReserve(rtmxReserve, true);
+            const otherFormatted = formatReserve(otherReserve, false);
 
             const row = tbody.insertRow();
             row.innerHTML = `
@@ -192,7 +189,7 @@
       }
     }
 
-    btn.addEventListener("click", checkLiquidity);
+    document.getElementById("checkBtn").addEventListener("click", checkLiquidity);
   </script>
 </body>
 </html>
