@@ -15,6 +15,21 @@
       color: #333;
     }
     h1 { color: #2563eb; }
+    button {
+      background: #2563eb;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      font-size: 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      margin: 20px 0;
+    }
+    button:hover { background: #1d4ed8; }
+    button:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+    }
     table {
       width: 100%;
       border-collapse: collapse;
@@ -28,16 +43,24 @@
     th {
       background-color: #f1f5f9;
     }
-    .loading { color: orange; }
-    .error { color: red; }
+    .status {
+      margin: 10px 0;
+      min-height: 24px;
+    }
+    .loading { color: #ea580c; }
+    .error { color: #dc2626; }
     .zero { color: #999; font-style: italic; }
+    #liquidityTable { display: none; }
   </style>
 </head>
 <body>
   <h1>RTMX Liquidity Checker (Polygon / QuickSwap v2)</h1>
-  <p>Menampilkan likuiditas untuk semua pasangan RTMX dengan token kustom Anda.</p>
-  <div id="status" class="loading">Loading liquidity data...</div>
-  <table id="liquidityTable" style="display:none;">
+  <p>Klik tombol di bawah untuk memeriksa likuiditas RTMX di semua pasangan kustom Anda.</p>
+
+  <button id="checkBtn">Cek Likuiditas</button>
+  <div id="status" class="status"></div>
+
+  <table id="liquidityTable">
     <thead>
       <tr>
         <th>Pair</th>
@@ -91,67 +114,79 @@
     }
 
     async function checkLiquidity() {
+      const btn = document.getElementById("checkBtn");
       const status = document.getElementById("status");
       const table = document.getElementById("liquidityTable");
       const tbody = document.getElementById("tableBody");
 
-      let foundAny = false;
+      // Reset tampilan
+      btn.disabled = true;
+      status.textContent = "Sedang memeriksa likuiditas...";
+      status.className = "status loading";
+      tbody.innerHTML = "";
+      table.style.display = "none";
 
-      for (const pair of PAIRS) {
-        try {
-          const pairAddr = await factory.getPair(RTMX, pair.address);
-          if (pairAddr === ethers.constants.AddressZero) {
-            // Tambahkan baris dengan status "No Liquidity"
+      try {
+        let foundAny = false;
+
+        for (const pair of PAIRS) {
+          try {
+            const pairAddr = await factory.getPair(RTMX, pair.address);
+            if (pairAddr === ethers.constants.AddressZero) {
+              const row = tbody.insertRow();
+              row.innerHTML = `
+                <td>RTMX / ${pair.symbol}</td>
+                <td class="zero">0</td>
+                <td class="zero">0</td>
+                <td class="zero">Pair belum dibuat</td>
+              `;
+              continue;
+            }
+
+            foundAny = true;
+            const pairContract = new ethers.Contract(pairAddr, pairAbi, provider);
+            const [reserve0, reserve1] = await pairContract.getReserves();
+            const token0 = await pairContract.token0();
+
+            const isRTMXToken0 = token0.toLowerCase() === RTMX.toLowerCase();
+            const rtmxReserve = isRTMXToken0 ? reserve0 : reserve1;
+            const otherReserve = isRTMXToken0 ? reserve1 : reserve0;
+
+            const rtmxFormatted = await formatReserve(rtmxReserve, true);
+            const otherFormatted = await formatReserve(otherReserve, false);
+
             const row = tbody.insertRow();
             row.innerHTML = `
               <td>RTMX / ${pair.symbol}</td>
-              <td class="zero">0</td>
-              <td class="zero">0</td>
-              <td class="zero">Not created</td>
+              <td>${rtmxFormatted} RTMX</td>
+              <td>${otherFormatted} ${pair.symbol}</td>
+              <td><a href="https://polygonscan.com/address/${pairAddr}" target="_blank">${pairAddr.substring(0, 6)}...${pairAddr.substring(38)}</a></td>
             `;
-            continue;
+          } catch (err) {
+            console.error(`Error on ${pair.symbol}:`, err);
+            const row = tbody.insertRow();
+            row.innerHTML = `
+              <td>RTMX / ${pair.symbol}</td>
+              <td colspan="3" class="error">Gagal memuat data</td>
+            `;
           }
-
-          foundAny = true;
-          const pairContract = new ethers.Contract(pairAddr, pairAbi, provider);
-          const [reserve0, reserve1] = await pairContract.getReserves();
-          const token0 = await pairContract.token0();
-
-          const isRTMXToken0 = token0.toLowerCase() === RTMX.toLowerCase();
-          const rtmxReserve = isRTMXToken0 ? reserve0 : reserve1;
-          const otherReserve = isRTMXToken0 ? reserve1 : reserve0;
-
-          const rtmxFormatted = await formatReserve(rtmxReserve, true);
-          const otherFormatted = await formatReserve(otherReserve, false);
-
-          const row = tbody.insertRow();
-          row.innerHTML = `
-            <td>RTMX / ${pair.symbol}</td>
-            <td>${rtmxFormatted} RTMX</td>
-            <td>${otherFormatted} ${pair.symbol}</td>
-            <td><a href="https://polygonscan.com/address/${pairAddr}" target="_blank">${pairAddr}</a></td>
-          `;
-        } catch (err) {
-          console.error(`Error fetching ${pair.symbol}:`, err);
-          const row = tbody.insertRow();
-          row.innerHTML = `
-            <td>RTMX / ${pair.symbol}</td>
-            <td colspan="3" class="error">Error loading data</td>
-          `;
         }
-      }
 
-      status.style.display = "none";
-      table.style.display = "table";
+        status.textContent = foundAny 
+          ? "✅ Pengecekan selesai. Likuiditas ditampilkan di bawah." 
+          : "ℹ️ Tidak ditemukan likuiditas aktif di pasangan terdaftar.";
+        status.className = "status";
 
-      if (!foundAny) {
-        document.getElementById("tableBody").innerHTML = `
-          <tr><td colspan="4" class="zero">Tidak ada likuiditas ditemukan di pasangan yang terdaftar.</td></tr>
-        `;
+        table.style.display = "table";
+      } catch (err) {
+        status.textContent = "❌ Terjadi kesalahan: " + (err.message || err);
+        status.className = "status error";
+      } finally {
+        btn.disabled = false;
       }
     }
 
-    checkLiquidity();
+    document.getElementById("checkBtn").addEventListener("click", checkLiquidity);
   </script>
 </body>
 </html>
