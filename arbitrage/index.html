@@ -1,171 +1,189 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RTMX Pair Checker</title>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>RTMX Liquidity Checker</title>
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
   <style>
     body {
-      font-family: Arial, sans-serif;
-      background: #ffffff;
-      color: #222;
+      font-family: 'Segoe UI', sans-serif;
+      max-width: 900px;
+      margin: 0 auto;
       padding: 20px;
-      text-align: center;
+      background: #f9f9f9;
+      color: #333;
     }
-    h2 {
-      color: #5a2ecc;
-    }
+    h1 { color: #2563eb; }
     button {
-      background: #5a2ecc;
+      background: #2563eb;
       color: white;
       border: none;
-      padding: 10px 20px;
-      border-radius: 8px;
-      cursor: pointer;
+      padding: 12px 24px;
       font-size: 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      margin: 20px 0;
     }
-    button:hover {
-      background: #4b25aa;
-    }
+    button:hover { background: #1d4ed8; }
+    button:disabled { background: #9ca3af; cursor: not-allowed; }
     table {
       width: 100%;
       border-collapse: collapse;
       margin-top: 20px;
     }
     th, td {
-      padding: 10px;
       border: 1px solid #ddd;
+      padding: 10px;
+      text-align: left;
     }
-    th {
-      background-color: #f3f3f3;
-    }
-    .label {
-      padding: 3px 6px;
+    th { background-color: #f1f5f9; }
+    .status { margin: 10px 0; min-height: 24px; }
+    .loading { color: #ea580c; }
+    .error { color: #dc2626; }
+    .zero { color: #999; font-style: italic; }
+    .dex-label {
+      display: inline-block;
+      padding: 2px 8px;
       border-radius: 6px;
+      font-size: 13px;
       color: white;
-      font-size: 12px;
     }
-    .uniswap { background: #3b82f6; }
-    .quick { background: #10b981; }
-    .none { background: #9ca3af; }
+    .quick { background: #2563eb; }
+    .uni { background: #9333ea; }
+    #liquidityTable { display: none; }
   </style>
 </head>
 <body>
-  <h2>RTMX Pair Checker (Polygon)</h2>
-  <button onclick="loadPairs()">🔍 Cek Likuiditas</button>
+  <h1>RTMX Liquidity Checker (Polygon)</h1>
+  <p>Klik tombol di bawah untuk memeriksa likuiditas RTMX di QuickSwap v2 dan Uniswap v2 (Polygon).</p>
 
-  <table>
+  <button id="checkBtn">Cek Likuiditas</button>
+  <div id="status" class="status"></div>
+
+  <table id="liquidityTable">
     <thead>
       <tr>
+        <th>DEX</th>
         <th>Pair</th>
         <th>RTMX Reserve</th>
         <th>Token Reserve</th>
-        <th>DEX</th>
         <th>Pair Address</th>
       </tr>
     </thead>
-    <tbody id="pairTable">
-      <tr><td colspan="5">Klik "Cek Likuiditas" untuk memulai...</td></tr>
-    </tbody>
+    <tbody id="tableBody"></tbody>
   </table>
 
   <script>
-    const provider = new ethers.providers.JsonRpcProvider("https://polygon-rpc.com");
+    const RTMX = "0xcd3bec5b18c05c48e7b18d31981947f3bed2624d";
+    const RPC_URL = "https://polygon-rpc.com/";
 
-    const ROUTERS = {
-      uniswap: "0x9e5a52f57b3038f1b8eee45f28b3c1967e22799c",
-      quickswap: "0x5757371414417b8c6caad45baef941abc7d3ab32"
-    };
+    // 🔹 Dua factory yang akan dicek (sesuai permintaan: tidak diubah)
+    const FACTORIES = [
+      { name: "QuickSwap v2", address: "0x5757371414417b8C6CAad45bAeF941aBc7d3Ab32", class: "quick" },
+      { name: "Uniswap v2 (Polygon)", address: "0x9e5A52f57b3038F1B8EeE45F28b3C1967e22799C", class: "uni" }
+    ];
 
-    const RTMX = "0xd59d3eea5aa1b91280f9e98dbefe810a9e0053c5"; // lowercase untuk hindari checksum error
-
+    // 🔹 Daftar pasangan token + decimals
     const PAIRS = [
-      { symbol: "DOLLA",    address: "0xb18ba93cbd261e5c81e955ca96a1913f81757de9", decimals: 18 },
-      { symbol: "420pepe",  address: "0x345e4245b32c2225d7c54aac8738a9ae40d94266", decimals: 18 },
-      { symbol: "$CULO",    address: "0x74dd45dd579cad749f9381d6227e7e02277c944b", decimals: 9 },
-      { symbol: "PolyDoge", address: "0x8a953cfe442c5e8855cc6c61b1293fa648bae472", decimals: 18 },
-      { symbol: "BabyPol",  address: "0x3fb009dd27fbc4e2cf183b65279363967a1e8182", decimals: 18 }
+      { symbol: "DOLLA",    address: "0xB18Ba93CbD261E5c81E955Ca96A1913F81757DE9", decimals: 18 },
+      { symbol: "420pepe",  address: "0x345E4245B32c2225D7C54aAc8738a9aE40d94266", decimals: 18 },
+      { symbol: "$CULO",    address: "0x74dD45dd579caD749f9381D6227e7e02277C944B", decimals: 9 },
+      { symbol: "pointless",address: "0x9B8cc6320F22325759B7D2CA5CD27347bB4eCD86", decimals: 18 },
+      { symbol: "BONSAI",   address: "0x3d2bD0e15829AA5C362a4144FdF4A1112fa29B5c", decimals: 18 },
+      { symbol: "APEPE",    address: "0xA3f751662e282E83EC3cBc387d225Ca56dD63D3A", decimals: 18 },
+      { symbol: "VERSE",    address: "0xc708D6F2153933DAA50B2D0758955Be0A93A8FEc", decimals: 18 },
+      { symbol: "Bio-One",  address: "0xfac9927188972d7d99CF7f16B56E5E12D081d79f", decimals: 18 },
+      { symbol: "PolyDoge", address: "0x8A953CfE442c5E8855cc6c61b1293FA648BAE472", decimals: 18 },
+      { symbol: "BabyPol",  address: "0x3fB009dd27fBc4e2cf183b65279363967a1E8182", decimals: 18 }
     ];
 
-    const IUniswapV2Factory = [
-      "function getPair(address tokenA, address tokenB) external view returns (address pair)"
-    ];
-
-    const IUniswapV2Pair = [
-      "function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)",
-      "function token0() view returns (address)",
-      "function token1() view returns (address)"
-    ];
-
+    // 🔹 Fungsi format dengan decimals dinamis
     function formatReserve(reserve, decimals) {
       try {
         const formatted = ethers.utils.formatUnits(reserve, decimals);
-        return parseFloat(formatted).toLocaleString(undefined, { maximumFractionDigits: 6 });
+        const num = parseFloat(formatted);
+        return num.toLocaleString(undefined, { maximumFractionDigits: 6 });
       } catch {
         return "0";
       }
     }
 
-    async function getPairData(token, routerLabel, routerAddr) {
-      const factory = new ethers.Contract(routerAddr, IUniswapV2Factory, provider);
-      const pairAddress = await factory.getPair(RTMX, token.address);
-      if (pairAddress === ethers.constants.AddressZero) return null;
+    async function checkLiquidity() {
+      const btn = document.getElementById("checkBtn");
+      const statusEl = document.getElementById("status");
+      const table = document.getElementById("liquidityTable");
+      const tbody = document.getElementById("tableBody");
 
-      const pair = new ethers.Contract(pairAddress, IUniswapV2Pair, provider);
-      const [t0, t1] = await Promise.all([pair.token0(), pair.token1()]);
-      const [r0, r1] = await pair.getReserves();
+      btn.disabled = true;
+      statusEl.textContent = "Sedang memeriksa likuiditas...";
+      statusEl.className = "status loading";
+      tbody.innerHTML = "";
+      table.style.display = "none";
 
-      const rtmxReserve = (t0.toLowerCase() === RTMX) ? r0 : r1;
-      const tokenReserve = (t0.toLowerCase() === RTMX) ? r1 : r0;
+      const provider = new ethers.providers.JsonRpcProvider(RPC_URL);
+      const pairAbi = [
+        "function getReserves() view returns (uint112, uint112, uint32)",
+        "function token0() view returns (address)"
+      ];
 
-      return {
-        pairAddress,
-        routerLabel,
-        rtmxReserve: formatReserve(rtmxReserve, 18),
-        tokenReserve: formatReserve(tokenReserve, token.decimals),
-        symbol: token.symbol
-      };
-    }
+      try {
+        let found = false;
 
-    async function loadPairs() {
-      const table = document.getElementById("pairTable");
-      table.innerHTML = "<tr><td colspan='5'>⏳ Mengambil data...</td></tr>";
+        for (const factoryInfo of FACTORIES) {
+          const factory = new ethers.Contract(
+            factoryInfo.address,
+            ["function getPair(address, address) external view returns (address)"],
+            provider
+          );
 
-      const rows = [];
-      for (const token of PAIRS) {
-        let foundAny = false;
-        for (const [label, router] of Object.entries(ROUTERS)) {
-          const data = await getPairData(token, label, router);
-          if (data) {
-            foundAny = true;
-            rows.push(`
-              <tr>
-                <td>RTMX / ${data.symbol}</td>
-                <td>${data.rtmxReserve} RTMX</td>
-                <td>${data.tokenReserve} ${data.symbol}</td>
-                <td><span class="label ${data.routerLabel === "quickswap" ? "quick" : "uniswap"}">
-                  ${data.routerLabel === "uniswap" ? "Uniswap V2" : "QuickSwap V2"}
-                </span></td>
-                <td><a href="https://polygonscan.com/address/${data.pairAddress}" target="_blank">${data.pairAddress.slice(0,6)}...${data.pairAddress.slice(-4)}</a></td>
-              </tr>
-            `);
+          for (const pair of PAIRS) {
+            try {
+              const pairAddr = await factory.getPair(RTMX, pair.address);
+
+              if (pairAddr === ethers.constants.AddressZero) continue;
+
+              found = true;
+              const pairContract = new ethers.Contract(pairAddr, pairAbi, provider);
+              const [reserve0, reserve1] = await pairContract.getReserves();
+              const token0 = await pairContract.token0();
+
+              const isRTMXToken0 = token0.toLowerCase() === RTMX.toLowerCase();
+              const rtmxReserve = isRTMXToken0 ? reserve0 : reserve1;
+              const otherReserve = isRTMXToken0 ? reserve1 : reserve0;
+
+              const rtmxFormatted = formatReserve(rtmxReserve, 18);
+              const otherFormatted = formatReserve(otherReserve, pair.decimals);
+
+              const row = tbody.insertRow();
+              row.innerHTML = `
+                <td><span class="dex-label ${factoryInfo.class}">${factoryInfo.name}</span></td>
+                <td>RTMX / ${pair.symbol}</td>
+                <td>${rtmxFormatted} RTMX</td>
+                <td>${otherFormatted} ${pair.symbol}</td>
+                <td><a href="https://polygonscan.com/address/${pairAddr}" target="_blank">${pairAddr.substring(0, 6)}...${pairAddr.substring(38)}</a></td>
+              `;
+            } catch (err) {
+              console.warn(`Error ${pair.symbol} on ${factoryInfo.name}:`, err);
+            }
           }
         }
-        if (!foundAny) {
-          rows.push(`
-            <tr>
-              <td>RTMX / ${token.symbol}</td>
-              <td>0</td><td>0</td>
-              <td><span class="label none">Tidak Ada Pair</span></td>
-              <td>-</td>
-            </tr>
-          `);
-        }
-      }
 
-      table.innerHTML = rows.join("");
+        statusEl.textContent = found
+          ? "✅ Likuiditas ditemukan di salah satu DEX. Lihat tabel di bawah."
+          : "ℹ️ Tidak ditemukan likuiditas di kedua DEX.";
+        statusEl.className = "status";
+        table.style.display = "table";
+
+      } catch (err) {
+        statusEl.textContent = "❌ Error: " + (err.message || "Gagal terhubung ke jaringan.");
+        statusEl.className = "status error";
+      } finally {
+        btn.disabled = false;
+      }
     }
+
+    document.getElementById("checkBtn").addEventListener("click", checkLiquidity);
   </script>
 </body>
 </html>
