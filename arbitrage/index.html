@@ -6,74 +6,152 @@
   <title>RTMX Liquidity Checker</title>
   <script src="https://cdn.ethers.io/lib/ethers-5.7.4.esm.min.js" type="module"></script>
   <style>
-    body { font-family: sans-serif; padding: 20px; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f9f9f9;
+      color: #333;
+    }
+    h1 { color: #2563eb; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 12px;
+      text-align: left;
+    }
+    th {
+      background-color: #f1f5f9;
+    }
     .loading { color: orange; }
     .error { color: red; }
+    .zero { color: #999; font-style: italic; }
   </style>
 </head>
 <body>
-  <h2>RTMX Liquidity Checker (Polygon / QuickSwap v2)</h2>
-  <div id="output">Loading...</div>
+  <h1>RTMX Liquidity Checker (Polygon / QuickSwap v2)</h1>
+  <p>Menampilkan likuiditas untuk semua pasangan RTMX dengan token kustom Anda.</p>
+  <div id="status" class="loading">Loading liquidity data...</div>
+  <table id="liquidityTable" style="display:none;">
+    <thead>
+      <tr>
+        <th>Pair</th>
+        <th>RTMX Reserve</th>
+        <th>Token Reserve</th>
+        <th>Pair Address</th>
+      </tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+  </table>
 
   <script type="module">
     // --- Konfigurasi ---
-    const RTMX_ADDRESS = "0xcd3bec5b18c05c48e7b18d31981947f3bed2624d";
-    const WETH_ADDRESS = "0x7ceB23fD6bC0adD7418957c25f3131a794D2A270"; // WETH di Polygon
-    const FACTORY_ADDRESS = "0x5757371414417b8C6CAad45bAeF941aBc7d3Ab32"; // QuickSwap v2 Factory
-
-    // RPC publik Polygon (tanpa API key, tapi rate-limited)
+    const RTMX = "0xcd3bec5b18c05c48e7b18d31981947f3bed2624d";
+    const FACTORY = "0x5757371414417b8C6CAad45bAeF941aBc7d3Ab32"; // QuickSwap v2
     const RPC_URL = "https://polygon-rpc.com/";
 
-    // --- Fungsi utama ---
-    async function fetchLiquidity() {
-      const output = document.getElementById("output");
+    const PAIRS = [
+      { symbol: "DOLLA",    address: "0xB18Ba93CbD261E5c81E955Ca96A1913F81757DE9" },
+      { symbol: "420pepe",  address: "0x345E4245B32c2225D7C54aAc8738a9aE40d94266" },
+      { symbol: "$CULO",    address: "0x74dD45dd579caD749f9381D6227e7e02277C944B" },
+      { symbol: "pointless",address: "0x9B8cc6320F22325759B7D2CA5CD27347bB4eCD86" },
+      { symbol: "BONSAI",   address: "0x3d2bD0e15829AA5C362a4144FdF4A1112fa29B5c" },
+      { symbol: "APEPE",    address: "0xA3f751662e282E83EC3cBc387d225Ca56dD63D3A" },
+      { symbol: "VERSE",    address: "0xc708D6F2153933DAA50B2D0758955Be0A93A8FEc" },
+      { symbol: "Bio-One",  address: "0xfac9927188972d7d99CF7f16B56E5E12D081d79f" },
+      { symbol: "PolyDoge", address: "0x8A953CfE442c5E8855cc6c61b1293FA648BAE472" },
+      { symbol: "BabyPol",  address: "0x3fB009dd27fBc4e2cf183b65279363967a1E8182" }
+    ];
+
+    const provider = new ethers.providers.StaticJsonRpcProvider(RPC_URL);
+    const factory = new ethers.Contract(
+      FACTORY,
+      ["function getPair(address, address) external view returns (address)"],
+      provider
+    );
+
+    const pairAbi = [
+      "function getReserves() view returns (uint112, uint112, uint32)",
+      "function token0() view returns (address)"
+    ];
+
+    async function formatReserve(reserve, isRTMX) {
       try {
-        const provider = new ethers.providers.StaticJsonRpcProvider(RPC_URL);
-        const factory = new ethers.Contract(
-          FACTORY_ADDRESS,
-          ["function getPair(address, address) external view returns (address)"],
-          provider
-        );
-
-        const pairAddress = await factory.getPair(RTMX_ADDRESS, WETH_ADDRESS);
-        if (pairAddress === ethers.constants.AddressZero) {
-          output.innerHTML = "<div class='error'>Pair RTMX/WETH tidak ditemukan.</div>";
-          return;
-        }
-
-        const pair = new ethers.Contract(
-          pairAddress,
-          [
-            "function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)",
-            "function token0() external view returns (address)",
-            "function token1() external view returns (address)"
-          ],
-          provider
-        );
-
-        const [reserve0, reserve1] = await pair.getReserves();
-        const token0 = await pair.token0();
-        const isRTMXToken0 = token0.toLowerCase() === RTMX_ADDRESS.toLowerCase();
-
-        const rtmxReserve = isRTMXToken0 ? reserve0 : reserve1;
-        const wethReserve = isRTMXToken0 ? reserve1 : reserve0;
-
-        const rtmxFormatted = ethers.utils.formatUnits(rtmxReserve, 18);
-        const wethFormatted = ethers.utils.formatUnits(wethReserve, 18);
-
-        output.innerHTML = `
-          <p><strong>Pair Address:</strong> ${pairAddress}</p>
-          <p><strong>RTMX Reserve:</strong> ${parseFloat(rtmxFormatted).toLocaleString()} RTMX</p>
-          <p><strong>WETH Reserve:</strong> ${parseFloat(wethFormatted).toLocaleString()} WETH</p>
-          <p><em>Nilai likuiditas dapat dikonversi ke USD jika Anda menghubungkan harga WETH.</em></p>
-        `;
-      } catch (err) {
-        console.error(err);
-        output.innerHTML = `<div class='error'>Error: ${err.message}</div>`;
+        const formatted = ethers.utils.formatUnits(reserve, 18);
+        const num = parseFloat(formatted);
+        return isRTMX ? num.toLocaleString(undefined, { maximumFractionDigits: 6 }) : num.toLocaleString(undefined, { maximumFractionDigits: 2 });
+      } catch {
+        return "0";
       }
     }
 
-    fetchLiquidity();
+    async function checkLiquidity() {
+      const status = document.getElementById("status");
+      const table = document.getElementById("liquidityTable");
+      const tbody = document.getElementById("tableBody");
+
+      let foundAny = false;
+
+      for (const pair of PAIRS) {
+        try {
+          const pairAddr = await factory.getPair(RTMX, pair.address);
+          if (pairAddr === ethers.constants.AddressZero) {
+            // Tambahkan baris dengan status "No Liquidity"
+            const row = tbody.insertRow();
+            row.innerHTML = `
+              <td>RTMX / ${pair.symbol}</td>
+              <td class="zero">0</td>
+              <td class="zero">0</td>
+              <td class="zero">Not created</td>
+            `;
+            continue;
+          }
+
+          foundAny = true;
+          const pairContract = new ethers.Contract(pairAddr, pairAbi, provider);
+          const [reserve0, reserve1] = await pairContract.getReserves();
+          const token0 = await pairContract.token0();
+
+          const isRTMXToken0 = token0.toLowerCase() === RTMX.toLowerCase();
+          const rtmxReserve = isRTMXToken0 ? reserve0 : reserve1;
+          const otherReserve = isRTMXToken0 ? reserve1 : reserve0;
+
+          const rtmxFormatted = await formatReserve(rtmxReserve, true);
+          const otherFormatted = await formatReserve(otherReserve, false);
+
+          const row = tbody.insertRow();
+          row.innerHTML = `
+            <td>RTMX / ${pair.symbol}</td>
+            <td>${rtmxFormatted} RTMX</td>
+            <td>${otherFormatted} ${pair.symbol}</td>
+            <td><a href="https://polygonscan.com/address/${pairAddr}" target="_blank">${pairAddr}</a></td>
+          `;
+        } catch (err) {
+          console.error(`Error fetching ${pair.symbol}:`, err);
+          const row = tbody.insertRow();
+          row.innerHTML = `
+            <td>RTMX / ${pair.symbol}</td>
+            <td colspan="3" class="error">Error loading data</td>
+          `;
+        }
+      }
+
+      status.style.display = "none";
+      table.style.display = "table";
+
+      if (!foundAny) {
+        document.getElementById("tableBody").innerHTML = `
+          <tr><td colspan="4" class="zero">Tidak ada likuiditas ditemukan di pasangan yang terdaftar.</td></tr>
+        `;
+      }
+    }
+
+    checkLiquidity();
   </script>
 </body>
 </html>
