@@ -2,359 +2,373 @@
 <html lang="id">
 <head>
   <meta charset="utf-8" />
-  <title>WPOL Arbitrage Route Scanner (3–4 hop)</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
-    :root {
-      --bg: #071021;
-      --card-bg: #0b1a2f;
-      --text: #e6eef8;
-      --text-muted: #84a2bd;
-      --border: #203240;
-      --green: #8de57d;
-      --red: #ff8a8a;
-      --yellow: #ffd166;
-      --button-bg: #1a2d47;
-      --button-hover: #253d5a;
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    body {
-      font-family: 'Inter', Arial, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      padding: 16px;
-      margin: 0;
-      line-height: 1.5;
-    }
-
-    h1 {
-      margin: 0 0 8px 0;
-      font-size: 20px;
-    }
-
-    .subtitle {
-      font-size: 13px;
-      color: var(--text-muted);
-      margin-bottom: 16px;
-    }
-
-    label {
-      display: block;
-      font-size: 13px;
-      color: var(--text-muted);
-      margin-bottom: 4px;
-    }
-
-    input, select, button {
-      padding: 8px 10px;
-      border-radius: 6px;
-      border: 1px solid var(--border);
-      background: var(--card-bg);
-      color: var(--text);
-      font-size: 14px;
-      width: 100%;
-    }
-
-    input:focus, select:focus {
-      outline: none;
-      border-color: #4a6fa5;
-    }
-
-    .row {
-      display: flex;
-      gap: 12px;
-      margin-top: 12px;
-      flex-wrap: wrap;
-    }
-
-    .col {
-      flex: 1;
-      min-width: 140px;
-    }
-
-    .small {
-      flex: 0 0 120px;
-    }
-
-    button {
-      background: var(--button-bg);
-      cursor: pointer;
-      font-weight: 600;
-      transition: background 0.2s;
-    }
-
-    button:hover {
-      background: var(--button-hover);
-    }
-
-    .controls {
-      margin-top: 12px;
-      display: flex;
-      gap: 10px;
-      align-items: center;
-      flex-wrap: wrap;
-    }
-
-    .status {
-      font-size: 13px;
-      color: var(--text-muted);
-      margin-left: 8px;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 16px;
-      background: var(--card-bg);
-      border-radius: 8px;
-      overflow: hidden;
-    }
-
-    th, td {
-      padding: 10px 12px;
-      text-align: left;
-      font-size: 13px;
-      border-bottom: 1px solid var(--border);
-    }
-
-    th {
-      color: #7fa0bf;
-      font-weight: 600;
-    }
-
-    tr:last-child td {
-      border-bottom: none;
-    }
-
-    .profit-pos { color: var(--green); font-weight: 700; }
-    .profit-neg { color: var(--red); font-weight: 700; }
-    .profit-zero { color: var(--text-muted); }
-
-    .route-path {
-      font-family: monospace;
-      font-size: 12px;
-      background: rgba(0,0,0,0.2);
-      padding: 2px 6px;
-      border-radius: 4px;
-    }
-
-    .note-profitable::before {
-      content: "✓";
-      color: var(--green);
-      margin-right: 4px;
-    }
-
-    .note-unprofitable::before {
-      content: "✗";
-      color: var(--red);
-      margin-right: 4px;
-    }
-
-    .footer-note {
-      margin-top: 16px;
-      font-size: 12px;
-      color: var(--text-muted);
-      line-height: 1.4;
-    }
-
-    @media (max-width: 600px) {
-      .row { flex-direction: column; }
-      .small { flex: 1; }
-      .controls { flex-direction: column; align-items: flex-start; }
-      .status { margin-left: 0; margin-top: 8px; }
-    }
-  </style>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>RTMX Liquidity Dashboard</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <h1>WPOL Arbitrage Route Scanner (3–4 hop)</h1>
-  <p class="subtitle">WPOL dipakai sebagai token awal & akhir otomatis. Hanya mendeteksi (tidak eksekusi).</p>
+  <div class="container">
+    <header>
+      <div>
+        <h1>RTMX Liquidity Dashboard</h1>
+        <p class="lead">Sumber: Google Sheets — live snapshot likuiditas RTMX per pair. Cocok untuk monitoring & route discovery.</p>
+      </div>
 
-  <label for="rpc">RPC Endpoint (ganti jika ada CORS/rate limit)</label>
-  <input id="rpc" value="https://polygon-rpc.com" />
+      <button id="themeToggle" class="btn ghost" title="Ganti tema">🌓</button>
 
-  <div class="row">
-    <div class="col">
-      <label for="amount">Jumlah WPOL untuk uji (mis. 1)</label>
-      <input id="amount" value="1" />
-    </div>
-    <div class="col small">
-      <label for="delay">Delay ms / call</label>
-      <input id="delay" value="200" type="number" min="0" />
-    </div>
-    <div class="col small">
-      <label for="filterProfitable">Tampilkan hanya profitable?</label>
-      <select id="filterProfitable">
-        <option value="false">Tidak</option>
-        <option value="true">Ya</option>
-      </select>
-    </div>
+      <div class="status">
+        <span id="lastFetch" class="muted">—</span>
+        <div class="dot" id="fetchDot" style="background:#f97316"></div>
+      </div>
+    </header>
+
+    <section class="card">
+      <div class="controls">
+        <input id="search" class="input small" placeholder="Cari pair / token / dex..." />
+        <select id="sortBy" class="input small">
+          <option value="none">Sort: Default</option>
+          <option value="rtmx_desc">RTMX Reserve ↓</option>
+          <option value="rtmx_asc">RTMX Reserve ↑</option>
+          <option value="token_desc">Token Reserve ↓</option>
+          <option value="token_asc">Token Reserve ↑</option>
+        </select>
+
+        <label style="display:flex;align-items:center;gap:6px">
+          <input id="autoRefresh" type="checkbox" checked /> <span class="muted" style="font-size:13px">Auto refresh</span>
+        </label>
+
+        <input id="interval" class="input small" type="number" min="10" value="60" style="width:88px" title="Interval detik" />
+        <button id="refreshBtn" class="btn">Refresh now</button>
+
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <button id="downloadCsv" class="btn ghost">Download CSV</button>
+          <button id="openSheet" class="btn ghost">Open Sheet</button>
+        </div>
+      </div>
+
+      <!-- Summary Totals -->
+      <div class="summary">
+        <div class="summary-item">
+          <span class="summary-label">Total RTMX Reserve</span>
+          <span id="totalRtmx">—</span> RTMX
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">Total Liquidity (USD)</span>
+          <span id="totalLiquidity">—</span>
+        </div>
+      </div>
+
+      <div style="overflow:auto">
+        <table id="dataTable" aria-live="polite">
+          <thead>
+            <tr>
+              <th style="width:120px">DEX</th>
+              <th>Pair</th>
+              <th style="width:150px">RTMX Reserve</th>
+              <th style="width:150px">Token Reserve</th>
+              <th style="width:220px">Pair Address</th>
+              <th style="width:160px">Updated</th>
+              <th style="width:160px">Total Liquidity</th>
+            </tr>
+          </thead>
+          <tbody id="tbody">
+            <tr><td colspan="7" class="empty">Memuat data…</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="pager" id="pagerWrap" style="display:none">
+        <div id="pagerButtons"></div>
+      </div>
+    </section>
+
+    <footer style="margin-top:14px;color:var(--muted);font-size:13px">
+      Template by Ahmad Sobandi — gunakan bersama Google Apps Script yang mem-push data ke sheet. Pastikan sheet diset sebagai "Anyone with link - Viewer".
+    </footer>
   </div>
 
-  <div class="controls">
-    <button id="start">🔎 Mulai Scan (3–4 hop)</button>
-    <button id="clear">Clear</button>
-    <span class="status" id="status">Status: idle</span>
-  </div>
-
-  <table id="tbl" style="display: none;">
-    <thead>
-      <tr>
-        <th>#</th>
-        <th>Route</th>
-        <th>Output (WPOL)</th>
-        <th>Profit</th>
-        <th>Profit %</th>
-        <th>Note</th>
-      </tr>
-    </thead>
-    <tbody id="tb"></tbody>
-  </table>
-
-  <p class="footer-note">
-    Catatan: WPOL = Wrapped MATIC (18 decimals). RPC publik bisa terkena CORS atau rate-limit — jika error, coba ganti ke
-    <a href="https://llamarpc.com" target="_blank" style="color:#4a90e2">LlamaRPC</a>,
-    <a href="https://1rpc.io/polygon" target="_blank" style="color:#4a90e2">1RPC</a>, atau gunakan proxy.
-  </p>
-
-  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
   <script>
-    (async () => {
-      const WPOL = "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270".toLowerCase();
-      const TOKENS = {
-        "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270": "WPOL",
-        "0xc2132d05d31c914a87c6611c10748aeb04b58e8f": "USDT",
-        "0x8f3cf7ad23cd3cadbd9735aff958023239c6a063": "DAI",
-        "0x7ceb23fd6bc0add59e62ac25578270cff1b9f619": "WETH",
-        "0x2791bca1f2de4661ed88a30c99a7a9449aa84174": "USDC",
-      };
-      const TOKEN_SYMBOL = Object.fromEntries(
-        Object.entries(TOKENS).map(([k, v]) => [k.toLowerCase(), v])
-      );
+    // === CONFIG ===
+    const SPREADSHEET_ID = '1IT7sHQQqSjyWnJLPMNi9fQQSb9-pRB7R5sr03-E0nug';
+    const GVIZ_URL = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json`;
+    const PAGE_SIZE = 25;
 
-      const routerAddr = "0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff";
-      const routerABI = ["function getAmountsOut(uint amountIn, address[] calldata path) view returns (uint[] memory amounts)"];
+    // UI refs
+    const tbody = document.getElementById('tbody');
+    const lastFetchEl = document.getElementById('lastFetch');
+    const fetchDot = document.getElementById('fetchDot');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const autoRefresh = document.getElementById('autoRefresh');
+    const intervalInput = document.getElementById('interval');
+    const searchInput = document.getElementById('search');
+    const sortSelect = document.getElementById('sortBy');
+    const pagerWrap = document.getElementById('pagerWrap');
+    const pagerButtons = document.getElementById('pagerButtons');
+    const downloadCsv = document.getElementById('downloadCsv');
+    const openSheet = document.getElementById('openSheet');
+    const totalRtmxEl = document.getElementById('totalRtmx');
+    const totalLiquidityEl = document.getElementById('totalLiquidity');
 
-      const startBtn = document.getElementById('start');
-      const clearBtn = document.getElementById('clear');
-      const statusEl = document.getElementById('status');
-      const tbl = document.getElementById('tbl');
-      const tb = document.getElementById('tb');
+    // state
+    let rawRows = [];
+    let filtered = [];
+    let currentPage = 1;
+    let refreshTimer = null;
 
-      function setStatus(text) {
-        statusEl.textContent = text;
+    // helpers
+    function setStatusLoading(loading){
+      if(loading){
+        lastFetchEl.textContent = 'Memuat...';
+        fetchDot.style.background = '#f97316';
+      } else {
+        fetchDot.style.background = '#10b981';
+      }
+    }
+
+    function formatNumber(val){
+      if(val === null || val === '' || isNaN(Number(val))) return '-';
+      const n = Number(val);
+      if(Math.abs(n) >= 1) return n.toLocaleString(undefined, {maximumFractionDigits: 6});
+      return n.toPrecision(6);
+    }
+
+    function toPolygonscanLink(addr){
+      if(!addr) return '';
+      return `https://polygonscan.com/address/${addr}`;
+    }
+
+    function formatTimestamp(input) {
+      // Input format from Google Sheets: "11/04/2025, 21:26:25"
+      // We'll parse it assuming US-style MM/dd/yyyy
+      const parts = input.trim().split(', ');
+      if (parts.length !== 2) return input;
+      const datePart = parts[0]; // e.g. "11/04/2025"
+      const timePart = parts[1]; // e.g. "21:26:25"
+
+      const [month, day, year] = datePart.split('/');
+      const [hour, minute, second] = timePart.split(':').map(Number);
+
+      const date = new Date(year, month - 1, day, hour, minute, second);
+      if (isNaN(date.getTime())) return input;
+
+      return date.toLocaleDateString('en-US', {
+        month: 'numeric',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+      });
+    }
+
+    function parseGviz(text){
+      const jsonText = text.trim().replace(/^[\s\S]*?setResponse\(/,'').replace(/\);?$/,'');
+      return JSON.parse(jsonText);
+    }
+
+    function updateTotals(rows) {
+      let totalRtmx = 0;
+      let totalLiq = 0;
+
+      for (const r of rows) {
+        const rtmxVal = parseFloat(r[2]) || 0;
+        const liqVal = parseFloat(r[6]) || 0;
+        totalRtmx += rtmxVal;
+        totalLiq += liqVal;
       }
 
-      function sleep(ms) {
-        return new Promise(r => setTimeout(r, ms));
+      totalRtmxEl.textContent = formatNumber(totalRtmx);
+      totalLiquidityEl.textContent = `$${formatNumber(totalLiq)}`;
+    }
+
+    async function fetchSheet(){
+      try {
+        setStatusLoading(true);
+        const res = await fetch(GVIZ_URL, {cache: 'no-store'});
+        const txt = await res.text();
+        const json = parseGviz(txt);
+
+        const rows = (json.table.rows || []).map(r => (r.c || []).map(c => {
+          if(!c) return '';
+          return (typeof c.v === 'object' && c.v !== null && c.v.hasOwnProperty('v')) ? c.v.v : c.v;
+        }));
+
+        rawRows = rows;
+        const now = new Date();
+        lastFetchEl.textContent = 'Terakhir: ' + now.toLocaleString();
+        setStatusLoading(false);
+        applyFilterAndRender();
+      } catch (err) {
+        console.error('fetchSheet error', err);
+        lastFetchEl.textContent = 'Error memuat data';
+        setStatusLoading(false);
+        tbody.innerHTML = `<tr><td colspan="7" class="empty">Gagal ambil data — cek permission sheet & koneksi.</td></tr>`;
+      }
+    }
+
+    function applyFilterAndRender(){
+      const q = (searchInput.value || '').trim().toLowerCase();
+      filtered = rawRows.filter(r => {
+        const line = (r.join(' ') || '').toLowerCase();
+        return !q || line.includes(q);
+      });
+
+      const sortMode = sortSelect.value;
+      if(sortMode !== 'none') {
+        const [field, dir] = sortMode.split('_');
+        const idx = field === 'rtmx' ? 2 : (field === 'token' ? 3 : -1);
+        if(idx >= 0){
+          filtered.sort((a,b) => {
+            const va = Number(a[idx]) || 0;
+            const vb = Number(b[idx]) || 0;
+            return dir === 'desc' ? vb - va : va - vb;
+          });
+        }
       }
 
-      startBtn.addEventListener('click', async () => {
-        const rpc = document.getElementById('rpc').value.trim().replace(/\s+$/, '');
-        const amountStr = document.getElementById('amount').value.trim() || "1";
-        const delayMs = parseInt(document.getElementById('delay').value || "200", 10);
-        const onlyProfit = document.getElementById('filterProfitable').value === 'true';
+      updateTotals(filtered);
+      currentPage = 1;
+      renderPage();
+    }
 
-        if (!rpc) {
-          alert("RPC URL tidak boleh kosong.");
-          return;
+    function renderPage(){
+      const total = filtered.length;
+      if(total === 0){
+        tbody.innerHTML = `<tr><td colspan="7" class="empty">Tidak ada data</td></tr>`;
+        pagerWrap.style.display = 'none';
+        return;
+      }
+
+      const pages = Math.ceil(total / PAGE_SIZE);
+      if(currentPage > pages) currentPage = pages;
+      const start = (currentPage - 1) * PAGE_SIZE;
+      const pageRows = filtered.slice(start, start + PAGE_SIZE);
+
+      tbody.innerHTML = '';
+      for(const r of pageRows){
+        const dex = r[0] || '';
+        const pair = r[1] || '';
+        const rtmx = formatNumber(r[2]);
+        const token = formatNumber(r[3]);
+        const addr = r[4] || '';
+        const updated = r[5] ? formatTimestamp(r[5]) : '-';
+        const liquidity = r[6] || '';
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><span class="dex-label ${dex.toLowerCase().includes('quick') ? 'quick' : (dex.toLowerCase().includes('uni') ? 'uni' : '')}">${dex || ''}</span></td>
+          <td>${pair}</td>
+          <td>${rtmx} RTMX</td>
+          <td>${token}</td>
+          <td>${addr ? `<a class="link" href="${toPolygonscanLink(addr)}" target="_blank" rel="noopener noreferrer">${addr.substring(0,8)}...${addr.slice(-6)}</a>` : '-'}</td>
+          <td>${updated}</td>
+          <td>$ ${liquidity}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+
+      renderPager(pages);
+    }
+
+    function renderPager(totalPages){
+      pagerWrap.style.display = totalPages > 1 ? 'flex' : 'none';
+      pagerButtons.innerHTML = '';
+
+      const visible = 7;
+      let start = Math.max(1, currentPage - Math.floor(visible/2));
+      let end = Math.min(totalPages, start + visible - 1);
+      if(end - start < visible - 1) start = Math.max(1, end - visible + 1);
+
+      if(start > 1){
+        const btn = createPageButton(1, '1');
+        pagerButtons.appendChild(btn);
+        if(start > 2) {
+          const dots = document.createElement('span'); dots.style.margin='0 6px'; dots.textContent='...'; pagerButtons.appendChild(dots);
         }
+      }
 
-        let amountInWei;
-        try {
-          amountInWei = ethers.utils.parseUnits(amountStr, 18);
-        } catch (e) {
-          alert("Jumlah WPOL tidak valid.");
-          return;
+      for(let i=start;i<=end;i++){
+        pagerButtons.appendChild(createPageButton(i));
+      }
+
+      if(end < totalPages){
+        if(end < totalPages - 1) {
+          const dots2 = document.createElement('span'); dots2.style.margin='0 6px'; dots2.textContent='...'; pagerButtons.appendChild(dots2);
         }
+        pagerButtons.appendChild(createPageButton(totalPages, String(totalPages)));
+      }
+    }
 
-        let provider;
-        try {
-          provider = new ethers.providers.JsonRpcProvider(rpc);
-          await provider.getBlockNumber();
-        } catch (e) {
-          console.error(e);
-          alert("Gagal terhubung ke RPC. Coba ganti endpoint.");
-          setStatus("Error: RPC gagal");
-          return;
-        }
+    function createPageButton(page, label){
+      const btn = document.createElement('button');
+      btn.className = 'page' + (page === currentPage ? ' active' : '');
+      btn.textContent = label || page;
+      btn.onclick = () => { currentPage = page; renderPage(); };
+      return btn;
+    }
 
-        const router = new ethers.Contract(routerAddr, routerABI, provider);
-        const intermediates = Object.keys(TOKENS).map(k => k.toLowerCase()).filter(a => a !== WPOL);
+    refreshBtn.addEventListener('click', () => fetchSheet());
+    searchInput.addEventListener('input', debounce(applyFilterAndRender, 250));
+    sortSelect.addEventListener('change', applyFilterAndRender);
 
-        const routes = [];
+    downloadCsv.addEventListener('click', () => {
+      if(!rawRows.length) return alert('Belum ada data.');
+      const csv = [ ['DEX','Pair','RTMX Reserve','Token Reserve','Pair Address','Updated','Total Liquidity'], ...rawRows ].map(r => r.map(cell => `"${String(cell || '').replace(/"/g,'""')}"`).join(',')).join('\n');
+      const blob = new Blob([csv], {type:'text/csv'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `rtmx_liquidity_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.csv`;
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    });
 
-        // 3-hop: WPOL → A → B → WPOL
-        for (let i = 0; i < intermediates.length; i++) {
-          for (let j = 0; j < intermediates.length; j++) {
-            if (i === j) continue;
-            routes.push([WPOL, intermediates[i], intermediates[j], WPOL]);
-          }
-        }
+    openSheet.addEventListener('click', () => {
+      window.open(`https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/edit`, '_blank');
+    });
 
-        // 4-hop: WPOL → A → B → C → WPOL
-        for (let i = 0; i < intermediates.length; i++) {
-          for (let j = 0; j < intermediates.length; j++) {
-            for (let k = 0; k < intermediates.length; k++) {
-              if (i === j || j === k || i === k) continue;
-              routes.push([WPOL, intermediates[i], intermediates[j], intermediates[k], WPOL]);
-            }
-          }
-        }
+    function startAutoRefresh(){
+      stopAutoRefresh();
+      if(autoRefresh.checked){
+        const sec = Math.max(10, Number(intervalInput.value) || 60);
+        refreshTimer = setInterval(fetchSheet, sec * 1000);
+      }
+    }
+    function stopAutoRefresh(){
+      if(refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+    }
+    autoRefresh.addEventListener('change', () => {
+      if(autoRefresh.checked) startAutoRefresh(); else stopAutoRefresh();
+    });
+    intervalInput.addEventListener('change', () => {
+      if(autoRefresh.checked) startAutoRefresh();
+    });
 
-        tb.innerHTML = '';
-        tbl.style.display = 'table';
-        setStatus(`Memindai ${routes.length} rute...`);
+    function debounce(fn, wait){ let t; return (...args) => { clearTimeout(t); t = setTimeout(()=>fn(...args), wait); }; }
 
-        let resultIndex = 0;
-        for (const path of routes) {
-          resultIndex++;
-          setStatus(`Memindai ${resultIndex}/${routes.length} (${path.length - 2} hop)...`);
+    // ===== THEME TOGGLE =====
+    function setTheme(theme) {
+      document.body.className = theme === 'dark' ? 'theme-dark' : '';
+      localStorage.setItem('rtmx-theme', theme);
+    }
 
-          try {
-            const amounts = await router.getAmountsOut(amountInWei, path);
-            const finalOut = amounts[amounts.length - 1];
-            const outHuman = parseFloat(ethers.utils.formatUnits(finalOut, 18));
-            const inHuman = parseFloat(amountStr);
-            const profit = outHuman - inHuman;
-            const profitPct = (profit / inHuman) * 100;
+    function toggleTheme() {
+      const current = localStorage.getItem('rtmx-theme') || 'light';
+      setTheme(current === 'light' ? 'dark' : 'light');
+    }
 
-            const names = path.map(a => TOKEN_SYMBOL[a] || 'UNK');
+    (function initTheme() {
+      const saved = localStorage.getItem('rtmx-theme');
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const theme = saved || (prefersDark ? 'dark' : 'light');
+      setTheme(theme);
+    })();
 
-            if (onlyProfit && profitPct <= 0) continue;
+    document.getElementById('themeToggle').addEventListener('click', toggleTheme);
 
-            const tr = document.createElement('tr');
-
-            const profitClass = profit > 0 ? 'profit-pos' : profit < 0 ? 'profit-neg' : 'profit-zero';
-            const noteClass = profit > 0 ? 'note-profitable' : 'note-unprofitable';
-
-            tr.innerHTML = `
-              <td>${tb.children.length + 1}</td>
-              <td><span class="route-path">${names.join(' → ')}</span></td>
-              <td>${outHuman.toFixed(8)}</td>
-              <td class="${profitClass}">${profit.toFixed(8)}</td>
-              <td class="${profitClass}">${profitPct.toFixed(4)}%</td>
-              <td class="${noteClass}"></td>
-            `;
-            tb.appendChild(tr);
-          } catch (e) {
-            // Skip routes with no liquidity or errors
-          }
-
-          await sleep(delayMs);
-        }
-
-        setStatus(tb.children.length > 0 ? "Selesai — ditemukan hasil" : "Selesai — tidak ada hasil");
-      });
-
-      clearBtn.addEventListener('click', () => {
-        tb.innerHTML = '';
-        tbl.style.display = 'none';
-        setStatus('Dibersihkan');
-      });
+    // initial load
+    (function init(){
+      fetchSheet();
+      startAutoRefresh();
     })();
   </script>
 </body>
