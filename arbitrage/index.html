@@ -11,7 +11,13 @@
     <header>
       <div>
         <h1>RTMX Liquidity Dashboard</h1>
-        <p class="lead">Sumber: Google Sheets — live snapshot likuiditas RTMX per pair. Cocok untuk monitoring & route discovery.</p>
+        <p class="lead">
+          <a href="https://polygonscan.com/token/0xcd3bec5b18c05c48e7b18d31981947f3bed2624d" 
+             target="_blank" rel="noopener noreferrer" class="link">
+            Route Matrix (RTMX)
+          </a>
+          — Live snapshot likuiditas RTMX per pair. Cocok untuk monitoring & route discovery.
+        </p>
       </div>
 
       <div class="status">
@@ -47,12 +53,20 @@
       <!-- Summary Totals -->
       <div class="summary">
         <div class="summary-item">
-          <span class="summary-label">Total RTMX Reserve</span>
+          <span class="summary-label">Total RTMX Reserved</span>
           <span id="totalRtmx">—</span> RTMX
         </div>
         <div class="summary-item">
           <span class="summary-label">Total Liquidity (USD)</span>
           <span id="totalLiquidity">—</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">Reserved (%)</span>
+          <span id="pctReserved">—</span>%
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">Sisa (%)</span>
+          <span id="pctRemaining">—</span>%
         </div>
       </div>
 
@@ -81,7 +95,7 @@
     </section>
 
     <footer style="margin-top:14px;color:var(--muted);font-size:13px">
-      Template by Ahmad Sobandi — gunakan bersama Google Apps Script yang mem-push data ke sheet. Pastikan sheet diset sebagai "Anyone with link - Viewer".
+      Template by Ahmad Sobandi — gunakan bersama Google Apps Script yang mem-push data ke sheet.
     </footer>
   </div>
 
@@ -89,7 +103,9 @@
     const SPREADSHEET_ID = '1IT7sHQQqSjyWnJLPMNi9fQQSb9-pRB7R5sr03-E0nug';
     const GVIZ_URL = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json`;
     const PAGE_SIZE = 25;
+    const TOTAL_SUPPLY = 1_000_000_000_000; // 1 trillion RTMX
 
+    // UI refs
     const tbody = document.getElementById('tbody');
     const lastFetchEl = document.getElementById('lastFetch');
     const fetchDot = document.getElementById('fetchDot');
@@ -104,6 +120,8 @@
     const openSheet = document.getElementById('openSheet');
     const totalRtmxEl = document.getElementById('totalRtmx');
     const totalLiquidityEl = document.getElementById('totalLiquidity');
+    const pctReservedEl = document.getElementById('pctReserved');
+    const pctRemainingEl = document.getElementById('pctRemaining');
 
     let rawRows = [];
     let filtered = [];
@@ -122,7 +140,7 @@
     function formatNumber(val){
       if(val === null || val === '' || isNaN(Number(val))) return '-';
       const n = Number(val);
-      if(Math.abs(n) >= 1) return n.toLocaleString(undefined, {maximumFractionDigits: 6});
+      if(n >= 1) return n.toLocaleString(undefined, {maximumFractionDigits: 6});
       return n.toPrecision(6);
     }
 
@@ -132,17 +150,16 @@
     }
 
     function parseGoogleDateCell(cellValue) {
-      // Matches: Date(2025,3,11,21,26,25)
-      const match = (cellValue || '').match(/Date$$(\d+),(\d+),(\d+),(\d+),(\d+),(\d+)$$/);
+      const str = (cellValue || '').toString().trim();
+      const match = str.match(/Date$$(\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)$$/);
       if (!match) return null;
-      const [, year, month, day, hour, minute, second] = match.map(Number);
-      // In JS Date(), month is 0-indexed, so it's already correct
-      return new Date(year, month, day, hour, minute, second);
+      const [, y, M, d, h, m, s] = match.map(Number);
+      return new Date(y, M, d, h, m, s);
     }
 
     function formatUpdatedCell(cellValue) {
       const date = parseGoogleDateCell(cellValue);
-      if (!date || isNaN(date.getTime())) return '-';
+      if (!date || isNaN(date)) return '-';
       return date.toLocaleDateString('en-US', {
         month: 'numeric',
         day: 'numeric',
@@ -155,7 +172,19 @@
     }
 
     function parseGviz(text){
-      const jsonText = text.trim().replace(/^\/\*\/google\.visualization\.Query\.setResponse\(/,'').replace(/\);?$/,'');
+      // More robust: handle leading/trailing whitespace and optional comments
+      let jsonText = text.trim();
+      if (jsonText.startsWith("/*")) {
+        const end = jsonText.indexOf("*/") + 2;
+        jsonText = jsonText.substring(end).trim();
+      }
+      if (jsonText.startsWith("google.visualization.Query.setResponse(")) {
+        jsonText = jsonText.replace(/^google\.visualization\.Query\.setResponse\(/, '').replace(/\);?\s*$/, '');
+      } else {
+        // Fallback: try to extract JSON between parentheses
+        const match = jsonText.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/);
+        if (match) jsonText = match[1];
+      }
       return JSON.parse(jsonText);
     }
 
@@ -168,18 +197,25 @@
         totalRtmx += rtmxVal;
         totalLiq += liqVal;
       }
+
+      const pctReserved = (totalRtmx / TOTAL_SUPPLY) * 100;
+      const pctRemaining = 100 - pctReserved;
+
       totalRtmxEl.textContent = formatNumber(totalRtmx);
       totalLiquidityEl.textContent = `$${formatNumber(totalLiq)}`;
+      pctReservedEl.textContent = pctReserved >= 0.0001 ? pctReserved.toFixed(4) : '<0.0001';
+      pctRemainingEl.textContent = pctRemaining >= 0.0001 ? pctRemaining.toFixed(4) : '>99.9999';
     }
 
     async function fetchSheet(){
       try {
         setStatusLoading(true);
         const res = await fetch(GVIZ_URL, {cache: 'no-store'});
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const txt = await res.text();
-        const json = parseGviz(txt);
 
-        const rows = (json.table.rows || []).map(r => (r.c || []).map(c => {
+        const json = parseGviz(txt);
+        const rows = (json.table?.rows || []).map(r => (r.c || []).map(c => {
           if (!c) return '';
           return (typeof c.v === 'object' && c.v !== null && c.v.hasOwnProperty('v')) ? c.v.v : c.v;
         }));
@@ -189,7 +225,7 @@
         setStatusLoading(false);
         applyFilterAndRender();
       } catch (err) {
-        console.error('Error:', err);
+        console.error('Fetch error:', err);
         lastFetchEl.textContent = 'Error memuat data';
         setStatusLoading(false);
         tbody.innerHTML = `<tr><td colspan="7" class="empty">Gagal ambil data — cek permission sheet & koneksi.</td></tr>`;
@@ -307,14 +343,13 @@
         .map(r => r.map(cell => `"${String(cell || '').replace(/"/g,'""')}"`).join(','))
         .join('\n');
       const blob = new Blob([csv], {type:'text/csv'});
-      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
+      a.href = URL.createObjectURL(blob);
       a.download = `rtmx_liquidity_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.csv`;
       document.body.appendChild(a);
       a.click();
       a.remove();
-      URL.revokeObjectURL(url);
+      URL.revokeObjectURL(a.href);
     });
 
     openSheet.addEventListener('click', () => {
@@ -330,7 +365,8 @@
     }
 
     function stopAutoRefresh(){
-      if(refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+      if(refreshTimer) clearInterval(refreshTimer);
+      refreshTimer = null;
     }
 
     autoRefresh.addEventListener('change', () => autoRefresh.checked ? startAutoRefresh() : stopAutoRefresh());
