@@ -1,193 +1,348 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="id">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>RTMX Liquidity Checker</title>
-  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
-  <style>
-    body {
-      font-family: 'Segoe UI', sans-serif;
-      max-width: 900px;
-      margin: 0 auto;
-      padding: 20px;
-      background: #f9f9f9;
-      color: #333;
-    }
-    h1 { color: #2563eb; }
-    button {
-      background: #2563eb;
-      color: white;
-      border: none;
-      padding: 12px 24px;
-      font-size: 16px;
-      border-radius: 6px;
-      cursor: pointer;
-      margin: 20px 0;
-    }
-    button:hover { background: #1d4ed8; }
-    button:disabled { background: #9ca3af; cursor: not-allowed; }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 20px;
-    }
-    th, td {
-      border: 1px solid #ddd;
-      padding: 10px;
-      text-align: left;
-    }
-    th { background-color: #f1f5f9; }
-    .status { margin: 10px 0; min-height: 24px; }
-    .loading { color: #ea580c; }
-    .error { color: #dc2626; }
-    .zero { color: #999; font-style: italic; }
-    .dex-label {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 6px;
-      font-size: 13px;
-      color: white;
-    }
-    .quick { background: #2563eb; }
-    .uni { background: #9333ea; }
-    #liquidityTable { display: none; }
-  </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>RTMX Liquidity Dashboard</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <h1>RTMX Liquidity Checker (Polygon)</h1>
-  <p>Klik tombol di bawah untuk memeriksa likuiditas RTMX di QuickSwap v2 dan Uniswap v2 (Polygon).</p>
+  <div class="container">
+    <header>
+      <div>
+        <h1>RTMX Liquidity Dashboard</h1>
+        <p class="lead">Sumber: Google Sheets — live snapshot likuiditas RTMX per pair. Cocok untuk monitoring & route discovery.</p>
+      </div>
 
-  <button id="checkBtn">Cek Likuiditas</button>
-  <div id="status" class="status"></div>
+      <div class="status">
+        <span id="lastFetch" class="muted">—</span>
+        <div class="dot" id="fetchDot" style="background:#f97316"></div>
+      </div>
+    </header>
 
-  <table id="liquidityTable">
-    <thead>
-      <tr>
-        <th>DEX</th>
-        <th>Pair</th>
-        <th>RTMX Reserve</th>
-        <th>Token Reserve</th>
-        <th>Pair Address</th>
-      </tr>
-    </thead>
-    <tbody id="tableBody"></tbody>
-  </table>
+    <section class="card">
+      <div class="controls">
+        <input id="search" class="input small" placeholder="Cari pair / token / dex..." />
+        <select id="sortBy" class="input small">
+          <option value="none">Sort: Default</option>
+          <option value="rtmx_desc">RTMX Reserve ↓</option>
+          <option value="rtmx_asc">RTMX Reserve ↑</option>
+          <option value="token_desc">Token Reserve ↓</option>
+          <option value="token_asc">Token Reserve ↑</option>
+        </select>
+
+        <label style="display:flex;align-items:center;gap:6px">
+          <input id="autoRefresh" type="checkbox" checked /> <span class="muted" style="font-size:13px">Auto refresh</span>
+        </label>
+
+        <input id="interval" class="input small" type="number" min="10" value="60" style="width:88px" title="Interval detik" />
+        <button id="refreshBtn" class="btn">Refresh now</button>
+
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <button id="downloadCsv" class="btn ghost">Download CSV</button>
+          <button id="openSheet" class="btn ghost">Open Sheet</button>
+        </div>
+      </div>
+
+      <!-- Summary Totals -->
+      <div class="summary">
+        <div class="summary-item">
+          <span class="summary-label">Total RTMX Reserve</span>
+          <span id="totalRtmx">—</span> RTMX
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">Total Liquidity (USD)</span>
+          <span id="totalLiquidity">—</span>
+        </div>
+      </div>
+
+      <div style="overflow:auto">
+        <table id="dataTable" aria-live="polite">
+          <thead>
+            <tr>
+              <th style="width:120px">DEX</th>
+              <th>Pair</th>
+              <th style="width:150px">RTMX Reserve</th>
+              <th style="width:150px">Token Reserve</th>
+              <th style="width:220px">Pair Address</th>
+              <th style="width:160px">Updated</th>
+              <th style="width:160px">Total Liquidity</th>
+            </tr>
+          </thead>
+          <tbody id="tbody">
+            <tr><td colspan="7" class="empty">Memuat data…</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="pager" id="pagerWrap" style="display:none">
+        <div id="pagerButtons"></div>
+      </div>
+    </section>
+
+    <footer style="margin-top:14px;color:var(--muted);font-size:13px">
+      Template by Ahmad Sobandi — gunakan bersama Google Apps Script yang mem-push data ke sheet. Pastikan sheet diset sebagai "Anyone with link - Viewer".
+    </footer>
+  </div>
 
   <script>
-    const RTMX = "0xcd3bec5b18c05c48e7b18d31981947f3bed2624d";
-    const RPC_URL = "https://polygon-rpc.com/";
+    const SPREADSHEET_ID = '1IT7sHQQqSjyWnJLPMNi9fQQSb9-pRB7R5sr03-E0nug';
+    const GVIZ_URL = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json`;
+    const PAGE_SIZE = 25;
 
-    // 🔹 Dua factory yang akan dicek (sesuai permintaan: tidak diubah)
-    const FACTORIES = [
-      { name: "QuickSwap v2", address: "0x5757371414417b8C6CAad45bAeF941aBc7d3Ab32", class: "quick" },
-      { name: "Uniswap v2 (Polygon)", address: "0x9e5A52f57b3038F1B8EeE45F28b3C1967e22799C", class: "uni" }
-    ];
+    const tbody = document.getElementById('tbody');
+    const lastFetchEl = document.getElementById('lastFetch');
+    const fetchDot = document.getElementById('fetchDot');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const autoRefresh = document.getElementById('autoRefresh');
+    const intervalInput = document.getElementById('interval');
+    const searchInput = document.getElementById('search');
+    const sortSelect = document.getElementById('sortBy');
+    const pagerWrap = document.getElementById('pagerWrap');
+    const pagerButtons = document.getElementById('pagerButtons');
+    const downloadCsv = document.getElementById('downloadCsv');
+    const openSheet = document.getElementById('openSheet');
+    const totalRtmxEl = document.getElementById('totalRtmx');
+    const totalLiquidityEl = document.getElementById('totalLiquidity');
 
-    // 🔹 Daftar pasangan token + decimals
-    const PAIRS = [
-      { symbol: "DOLLA",    address: "0xB18Ba93CbD261E5c81E955Ca96A1913F81757DE9", decimals: 18 },
-      { symbol: "420pepe",  address: "0x345E4245B32c2225D7C54aAc8738a9aE40d94266", decimals: 18 },
-      { symbol: "$CULO",    address: "0x74dD45dd579caD749f9381D6227e7e02277C944B", decimals: 9 },
-      { symbol: "pointless",address: "0x9B8cc6320F22325759B7D2CA5CD27347bB4eCD86", decimals: 18 },
-      { symbol: "BONSAI",   address: "0x3d2bD0e15829AA5C362a4144FdF4A1112fa29B5c", decimals: 18 },
-      { symbol: "APEPE",    address: "0xA3f751662e282E83EC3cBc387d225Ca56dD63D3A", decimals: 18 },
-      { symbol: "VERSE",    address: "0xc708D6F2153933DAA50B2D0758955Be0A93A8FEc", decimals: 18 },
-      { symbol: "Bio-One",  address: "0xfac9927188972d7d99CF7f16B56E5E12D081d79f", decimals: 18 },
-      { symbol: "PolyDoge", address: "0x8A953CfE442c5E8855cc6c61b1293FA648BAE472", decimals: 18 },
-      { symbol: "SHIB",     address: "0x6f8a06447Ff6FcF75d803135a7de15CE88C1d4ec", decimals: 18 },
-      { symbol: "Bonk",     address: "0xe5B49820e5A1063F6F4DdF851327b5E8B2301048", decimals: 5 },
-      { symbol: "BAG",      address: "0x73b29199a8e4C146E893EB95f18dAc41738a88c6", decimals: 18 },
-      { symbol: "BabyPol",  address: "0x3fB009dd27fBc4e2cf183b65279363967a1E8182", decimals: 18 }
-    ];
+    let rawRows = [];
+    let filtered = [];
+    let currentPage = 1;
+    let refreshTimer = null;
 
-    // 🔹 Fungsi format dengan decimals dinamis
-    function formatReserve(reserve, decimals) {
-      try {
-        const formatted = ethers.utils.formatUnits(reserve, decimals);
-        const num = parseFloat(formatted);
-        return num.toLocaleString(undefined, { maximumFractionDigits: 6 });
-      } catch {
-        return "0";
+    function setStatusLoading(loading){
+      if(loading){
+        lastFetchEl.textContent = 'Memuat...';
+        fetchDot.style.background = '#f97316';
+      } else {
+        fetchDot.style.background = '#10b981';
       }
     }
 
-    async function checkLiquidity() {
-      const btn = document.getElementById("checkBtn");
-      const statusEl = document.getElementById("status");
-      const table = document.getElementById("liquidityTable");
-      const tbody = document.getElementById("tableBody");
+    function formatNumber(val){
+      if(val === null || val === '' || isNaN(Number(val))) return '-';
+      const n = Number(val);
+      if(Math.abs(n) >= 1) return n.toLocaleString(undefined, {maximumFractionDigits: 6});
+      return n.toPrecision(6);
+    }
 
-      btn.disabled = true;
-      statusEl.textContent = "Sedang memeriksa likuiditas...";
-      statusEl.className = "status loading";
-      tbody.innerHTML = "";
-      table.style.display = "none";
+    function toPolygonscanLink(addr){
+      if(!addr) return '';
+      return `https://polygonscan.com/address/${addr}`;
+    }
 
-      const provider = new ethers.providers.JsonRpcProvider(RPC_URL);
-      const pairAbi = [
-        "function getReserves() view returns (uint112, uint112, uint32)",
-        "function token0() view returns (address)"
-      ];
+    function parseGoogleDateCell(cellValue) {
+      // Matches: Date(2025,3,11,21,26,25)
+      const match = (cellValue || '').match(/Date$$(\d+),(\d+),(\d+),(\d+),(\d+),(\d+)$$/);
+      if (!match) return null;
+      const [, year, month, day, hour, minute, second] = match.map(Number);
+      // In JS Date(), month is 0-indexed, so it's already correct
+      return new Date(year, month, day, hour, minute, second);
+    }
 
+    function formatUpdatedCell(cellValue) {
+      const date = parseGoogleDateCell(cellValue);
+      if (!date || isNaN(date.getTime())) return '-';
+      return date.toLocaleDateString('en-US', {
+        month: 'numeric',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+      });
+    }
+
+    function parseGviz(text){
+      const jsonText = text.trim().replace(/^\/\*\/google\.visualization\.Query\.setResponse\(/,'').replace(/\);?$/,'');
+      return JSON.parse(jsonText);
+    }
+
+    function updateTotals(rows) {
+      let totalRtmx = 0;
+      let totalLiq = 0;
+      for (const r of rows) {
+        const rtmxVal = parseFloat(r[2]) || 0;
+        const liqVal = parseFloat(r[6]) || 0;
+        totalRtmx += rtmxVal;
+        totalLiq += liqVal;
+      }
+      totalRtmxEl.textContent = formatNumber(totalRtmx);
+      totalLiquidityEl.textContent = `$${formatNumber(totalLiq)}`;
+    }
+
+    async function fetchSheet(){
       try {
-        let found = false;
+        setStatusLoading(true);
+        const res = await fetch(GVIZ_URL, {cache: 'no-store'});
+        const txt = await res.text();
+        const json = parseGviz(txt);
 
-        for (const factoryInfo of FACTORIES) {
-          const factory = new ethers.Contract(
-            factoryInfo.address,
-            ["function getPair(address, address) external view returns (address)"],
-            provider
-          );
+        const rows = (json.table.rows || []).map(r => (r.c || []).map(c => {
+          if (!c) return '';
+          return (typeof c.v === 'object' && c.v !== null && c.v.hasOwnProperty('v')) ? c.v.v : c.v;
+        }));
 
-          for (const pair of PAIRS) {
-            try {
-              const pairAddr = await factory.getPair(RTMX, pair.address);
-
-              if (pairAddr === ethers.constants.AddressZero) continue;
-
-              found = true;
-              const pairContract = new ethers.Contract(pairAddr, pairAbi, provider);
-              const [reserve0, reserve1] = await pairContract.getReserves();
-              const token0 = await pairContract.token0();
-
-              const isRTMXToken0 = token0.toLowerCase() === RTMX.toLowerCase();
-              const rtmxReserve = isRTMXToken0 ? reserve0 : reserve1;
-              const otherReserve = isRTMXToken0 ? reserve1 : reserve0;
-
-              const rtmxFormatted = formatReserve(rtmxReserve, 18);
-              const otherFormatted = formatReserve(otherReserve, pair.decimals);
-
-              const row = tbody.insertRow();
-              row.innerHTML = `
-                <td><span class="dex-label ${factoryInfo.class}">${factoryInfo.name}</span></td>
-                <td>RTMX / ${pair.symbol}</td>
-                <td>${rtmxFormatted} RTMX</td>
-                <td>${otherFormatted} ${pair.symbol}</td>
-                <td><a href="https://polygonscan.com/address/${pairAddr}" target="_blank">${pairAddr.substring(0, 6)}...${pairAddr.substring(38)}</a></td>
-              `;
-            } catch (err) {
-              console.warn(`Error ${pair.symbol} on ${factoryInfo.name}:`, err);
-            }
-          }
-        }
-
-        statusEl.textContent = found
-          ? "✅ Likuiditas ditemukan di salah satu DEX. Lihat tabel di bawah."
-          : "ℹ️ Tidak ditemukan likuiditas di kedua DEX.";
-        statusEl.className = "status";
-        table.style.display = "table";
-
+        rawRows = rows;
+        lastFetchEl.textContent = 'Terakhir: ' + new Date().toLocaleString();
+        setStatusLoading(false);
+        applyFilterAndRender();
       } catch (err) {
-        statusEl.textContent = "❌ Error: " + (err.message || "Gagal terhubung ke jaringan.");
-        statusEl.className = "status error";
-      } finally {
-        btn.disabled = false;
+        console.error('Error:', err);
+        lastFetchEl.textContent = 'Error memuat data';
+        setStatusLoading(false);
+        tbody.innerHTML = `<tr><td colspan="7" class="empty">Gagal ambil data — cek permission sheet & koneksi.</td></tr>`;
       }
     }
 
-    document.getElementById("checkBtn").addEventListener("click", checkLiquidity);
+    function applyFilterAndRender(){
+      const q = (searchInput.value || '').trim().toLowerCase();
+      filtered = rawRows.filter(r => {
+        const line = (r.join(' ') || '').toLowerCase();
+        return !q || line.includes(q);
+      });
+
+      const sortMode = sortSelect.value;
+      if(sortMode !== 'none') {
+        const [field, dir] = sortMode.split('_');
+        const idx = field === 'rtmx' ? 2 : (field === 'token' ? 3 : -1);
+        if(idx >= 0){
+          filtered.sort((a,b) => {
+            const va = Number(a[idx]) || 0;
+            const vb = Number(b[idx]) || 0;
+            return dir === 'desc' ? vb - va : va - vb;
+          });
+        }
+      }
+
+      updateTotals(filtered);
+      currentPage = 1;
+      renderPage();
+    }
+
+    function renderPage(){
+      const total = filtered.length;
+      if(total === 0){
+        tbody.innerHTML = `<tr><td colspan="7" class="empty">Tidak ada data</td></tr>`;
+        pagerWrap.style.display = 'none';
+        return;
+      }
+
+      const pages = Math.ceil(total / PAGE_SIZE);
+      if(currentPage > pages) currentPage = pages;
+      const start = (currentPage - 1) * PAGE_SIZE;
+      const pageRows = filtered.slice(start, start + PAGE_SIZE);
+
+      tbody.innerHTML = '';
+      for(const r of pageRows){
+        const dex = r[0] || '';
+        const pair = r[1] || '';
+        const rtmx = formatNumber(r[2]);
+        const token = formatNumber(r[3]);
+        const addr = r[4] || '';
+        const updated = formatUpdatedCell(r[5]);
+        const liquidity = r[6] || '';
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><span class="dex-label ${dex.toLowerCase().includes('quick') ? 'quick' : (dex.toLowerCase().includes('uni') ? 'uni' : '')}">${dex || ''}</span></td>
+          <td>${pair}</td>
+          <td>${rtmx} RTMX</td>
+          <td>${token}</td>
+          <td>${addr ? `<a class="link" href="${toPolygonscanLink(addr)}" target="_blank" rel="noopener noreferrer">${addr.substring(0,8)}...${addr.slice(-6)}</a>` : '-'}</td>
+          <td>${updated}</td>
+          <td>$ ${liquidity}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+
+      renderPager(pages);
+    }
+
+    function renderPager(totalPages){
+      pagerWrap.style.display = totalPages > 1 ? 'flex' : 'none';
+      pagerButtons.innerHTML = '';
+
+      const visible = 7;
+      let start = Math.max(1, currentPage - Math.floor(visible/2));
+      let end = Math.min(totalPages, start + visible - 1);
+      if(end - start < visible - 1) start = Math.max(1, end - visible + 1);
+
+      if(start > 1){
+        pagerButtons.appendChild(createPageButton(1, '1'));
+        if(start > 2) {
+          const dots = document.createElement('span'); dots.style.margin='0 6px'; dots.textContent='...'; pagerButtons.appendChild(dots);
+        }
+      }
+
+      for(let i=start;i<=end;i++){
+        pagerButtons.appendChild(createPageButton(i));
+      }
+
+      if(end < totalPages){
+        if(end < totalPages - 1) {
+          const dots2 = document.createElement('span'); dots2.style.margin='0 6px'; dots2.textContent='...'; pagerButtons.appendChild(dots2);
+        }
+        pagerButtons.appendChild(createPageButton(totalPages, String(totalPages)));
+      }
+    }
+
+    function createPageButton(page, label){
+      const btn = document.createElement('button');
+      btn.className = 'page' + (page === currentPage ? ' active' : '');
+      btn.textContent = label || page;
+      btn.onclick = () => { currentPage = page; renderPage(); };
+      return btn;
+    }
+
+    // Event listeners
+    refreshBtn.addEventListener('click', fetchSheet);
+    searchInput.addEventListener('input', debounce(applyFilterAndRender, 250));
+    sortSelect.addEventListener('change', applyFilterAndRender);
+
+    downloadCsv.addEventListener('click', () => {
+      if(!rawRows.length) return alert('Belum ada data.');
+      const csv = [ ['DEX','Pair','RTMX Reserve','Token Reserve','Pair Address','Updated','Total Liquidity'], ...rawRows ]
+        .map(r => r.map(cell => `"${String(cell || '').replace(/"/g,'""')}"`).join(','))
+        .join('\n');
+      const blob = new Blob([csv], {type:'text/csv'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `rtmx_liquidity_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    });
+
+    openSheet.addEventListener('click', () => {
+      window.open(`https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/edit`, '_blank');
+    });
+
+    function startAutoRefresh(){
+      stopAutoRefresh();
+      if(autoRefresh.checked){
+        const sec = Math.max(10, Number(intervalInput.value) || 60);
+        refreshTimer = setInterval(fetchSheet, sec * 1000);
+      }
+    }
+
+    function stopAutoRefresh(){
+      if(refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+    }
+
+    autoRefresh.addEventListener('change', () => autoRefresh.checked ? startAutoRefresh() : stopAutoRefresh());
+    intervalInput.addEventListener('change', () => autoRefresh.checked && startAutoRefresh());
+
+    function debounce(fn, wait){ let t; return (...args) => { clearTimeout(t); t = setTimeout(()=>fn(...args), wait); }; }
+
+    // Initial load
+    (function init(){
+      fetchSheet();
+      startAutoRefresh();
+    })();
   </script>
 </body>
 </html>
-
