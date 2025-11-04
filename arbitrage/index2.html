@@ -424,6 +424,7 @@
         const token = formatNumber(r[3]);
         const addr = r[4] || '';
         const updated = r[5] || '';
+        const Liquidity = r[6] || '';
 
         const tr = document.createElement('tr');
         tr.innerHTML = `
@@ -433,6 +434,7 @@
           <td>${token}</td>
           <td>${addr ? `<a class="link" href="${toPolygonscanLink(addr)}" target="_blank" rel="noopener noreferrer">${addr.substring(0,8)}...${addr.slice(-6)}</a>` : '-'}</td>
           <td class="muted">${updated}</td>
+          <td>${Liquidity} $</td>
         `;
         tbody.appendChild(tr);
       }
