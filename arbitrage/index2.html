@@ -6,74 +6,241 @@
   <title>RTMX Liquidity Dashboard</title>
 
   <style>
-    :root{
-      --bg:#0f172a; --card:#0b1220; --accent:#2563eb; --muted:#94a3b8; --text:#e6eef8;
-      --glass: rgba(255,255,255,0.03);
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
-    }
-    html,body{height:100%}
-    body{
-      margin:0; padding:28px; background:linear-gradient(180deg,#071025 0%, #071427 100%); color:var(--text);
-      -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
-    }
-    .container{max-width:1100px;margin:0 auto}
-    header{display:flex;gap:16px;align-items:center; margin-bottom:18px}
-    h1{margin:0;font-size:20px;color:var(--accent)}
-    p.lead{margin:0;color:var(--muted);font-size:13px}
+<style>
+  /* Light theme default */
+  :root {
+    --bg: #ffffff;
+    --card: #f8fafc;
+    --accent: #2563eb;
+    --muted: #64748b;
+    --text: #1e293b;
+    --glass: rgba(0,0,0,0.03);
+    --border: #e2e8f0;
+    --hover-bg: #f1f5f9;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  }
 
-    .controls{display:flex;gap:8px;align-items:center;margin:16px 0;flex-wrap:wrap}
-    .btn{
-      background:var(--accent); color:white; border:0; padding:8px 12px;border-radius:8px; cursor:pointer;
-      font-weight:600; box-shadow:0 4px 14px rgba(37,99,235,0.12);
+  /* Dark theme override */
+  .theme-dark {
+    --bg: #0f172a;
+    --card: #0b1220;
+    --accent: #2563eb;
+    --muted: #94a3b8;
+    --text: #e6eef8;
+    --glass: rgba(255,255,255,0.03);
+    --border: rgba(255,255,255,0.04);
+    --hover-bg: rgba(255,255,255,0.01);
+  }
+
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    transition: background-color 0.3s, color 0.3s;
+  }
+
+  body {
+    padding: 28px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  header {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    margin-bottom: 18px;
+  }
+
+  h1 {
+    margin: 0;
+    font-size: 20px;
+    color: var(--accent);
+  }
+
+  p.lead {
+    margin: 0;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin: 16px 0;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    background: var(--accent);
+    color: white;
+    border: 0;
+    padding: 8px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.12);
+  }
+
+  .btn.ghost {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+
+  .input {
+    background: var(--card);
+    border: 1px solid var(--border);
+    padding: 8px 10px;
+    border-radius: 8px;
+    color: var(--text);
+  }
+
+  .small {
+    font-size: 13px;
+    padding: 6px 8px;
+  }
+
+  .status {
+    margin-left: auto;
+    font-size: 13px;
+    color: var(--muted);
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .status .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+
+  .card {
+    background: var(--glass);
+    border-radius: 12px;
+    padding: 14px;
+    box-shadow: 0 8px 30px rgba(2, 6, 23, 0.2);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+    font-size: 13px;
+  }
+
+  thead th {
+    position: sticky;
+    top: 0;
+    background: var(--card);
+    text-align: left;
+    padding: 10px;
+    font-size: 12px;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+  }
+
+  tbody td {
+    padding: 10px;
+    border-top: 1px solid var(--border);
+    color: var(--text);
+  }
+
+  tbody tr:hover {
+    background: var(--hover-bg);
+  }
+
+  .dex-label {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    color: white;
+  }
+
+  .quick {
+    background: #2563eb;
+  }
+
+  .uni {
+    background: #9333ea;
+  }
+
+  .link {
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 600;
+  }
+
+  .muted {
+    color: var(--muted);
+  }
+
+  .center {
+    text-align: center;
+  }
+
+  .empty {
+    padding: 24px;
+    color: var(--muted);
+    text-align: center;
+  }
+
+  .pager {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: flex-end;
+    margin-top: 10px;
+  }
+
+  .pager .page {
+    background: transparent;
+    border: 1px solid var(--border);
+    padding: 6px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--text);
+  }
+
+  .page.active {
+    background: var(--accent);
+    color: white;
+  }
+
+  @media (max-width: 820px) {
+    thead th:nth-child(3),
+    tbody td:nth-child(3),
+    thead th:nth-child(4),
+    tbody td:nth-child(4) {
+      display: none;
     }
-    .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06); color:var(--text)}
-    .input{background:var(--card); border:1px solid rgba(255,255,255,0.04); padding:8px 10px; border-radius:8px; color:var(--text)}
-    .small{font-size:13px;padding:6px 8px}
-
-    .status{
-      margin-left:auto; font-size:13px; color:var(--muted);
-      display:flex; gap:8px; align-items:center;
-    }
-    .status .dot{width:10px;height:10px;border-radius:50%;background:#f97316; display:inline-block}
-
-    .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border-radius:12px; padding:14px; box-shadow: 0 8px 30px rgba(2,6,23,0.6)}
-    table{width:100%;border-collapse:collapse; margin-top:10px; font-size:13px}
-    thead th{position:sticky; top:0; background:linear-gradient(180deg, rgba(9,11,18,0.9), rgba(9,11,18,0.85)); text-align:left; padding:10px; font-size:12px; color:var(--muted)}
-    tbody td{padding:10px;border-top:1px solid rgba(255,255,255,0.03); color:var(--text)}
-    tbody tr:hover{background:rgba(255,255,255,0.01)}
-    .dex-label{display:inline-block;padding:4px 8px;border-radius:999px;font-size:12px;color:white}
-    .quick{background:#2563eb}
-    .uni{background:#9333ea}
-    .link{color:var(--accent); text-decoration:none; font-weight:600}
-    .muted{color:var(--muted)}
-    .center{text-align:center}
-    .empty{padding:24px;color:var(--muted);text-align:center}
-
-    /* pagination */
-    .pager{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:10px}
-    .pager .page{background:transparent;border:1px solid rgba(255,255,255,0.04);padding:6px 8px;border-radius:6px; cursor:pointer;color:var(--text)}
-    .page.active{background:var(--accent); color:white}
-
-    /* small responsive */
-    @media (max-width:820px){
-      thead th:nth-child(3), tbody td:nth-child(3),
-      thead th:nth-child(4), tbody td:nth-child(4) { display:none }
-    }
+  }
+</style>
   </style>
 </head>
-<body>
-  <div class="container">
-    <header>
-      <div>
-        <h1>RTMX Liquidity Dashboard</h1>
-        <p class="lead">Sumber: Google Sheets — live snapshot likuiditas RTMX per pair. Cocok untuk monitoring & route discovery.</p>
-      </div>
+<header>
+  <div>
+    <h1>RTMX Liquidity Dashboard</h1>
+    <p class="lead">Sumber: Google Sheets — live snapshot likuiditas RTMX per pair. Cocok untuk monitoring & route discovery.</p>
+  </div>
 
-      <div class="status">
-        <span id="lastFetch" class="muted">—</span>
-        <div class="dot" id="fetchDot" style="background:#f97316"></div>
-      </div>
-    </header>
+  <button id="themeToggle" class="btn ghost" title="Ganti tema">🌓</button>
+
+  <div class="status">
+    <span id="lastFetch" class="muted">—</span>
+    <div class="dot" id="fetchDot" style="background:#f97316"></div>
+  </div>
+</header>
 
     <section class="card">
       <div class="controls">
@@ -123,7 +290,7 @@
     </section>
 
     <footer style="margin-top:14px;color:var(--muted);font-size:13px">
-      Template by ChatGPT — gunakan bersama Google Apps Script yang mem-push data ke sheet. Pastikan sheet diset sebagai "Anyone with link - Viewer".
+      Template by Ahmad Sobandi — gunakan bersama Google Apps Script yang mem-push data ke sheet. Pastikan sheet diset sebagai "Anyone with link - Viewer".
     </footer>
   </div>
 
@@ -356,6 +523,27 @@
       fetchSheet();
       startAutoRefresh();
     })();
+    // ===== THEME TOGGLE =====
+function setTheme(theme) {
+  document.body.className = theme === 'dark' ? 'theme-dark' : '';
+  localStorage.setItem('rtmx-theme', theme);
+}
+
+function toggleTheme() {
+  const current = localStorage.getItem('rtmx-theme') || 'light';
+  setTheme(current === 'light' ? 'dark' : 'light');
+}
+
+// Initialize theme on load
+(function initTheme() {
+  const saved = localStorage.getItem('rtmx-theme');
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const theme = saved || (prefersDark ? 'dark' : 'light');
+  setTheme(theme);
+})();
+
+// Bind toggle button
+document.getElementById('themeToggle').addEventListener('click', toggleTheme);
   </script>
 </body>
 </html>
