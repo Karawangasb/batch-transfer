@@ -2,202 +2,359 @@
 <html lang="id">
 <head>
   <meta charset="utf-8" />
-  <title>WPOL Arbitrage Route Scanner (3-4 hop)</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>RTMX Liquidity Dashboard</title>
+
   <style>
-    body{font-family:Inter,Arial,sans-serif;background:#071021;color:#e6eef8;padding:18px}
-    h1{margin:0 0 12px 0}
-    label{font-size:13px;color:#9fb1c9}
-    input,select,button,textarea{padding:8px;border-radius:6px;border:1px solid #203240;background:#071828;color:#e6eef8}
-    .row{display:flex;gap:8px;margin-top:8px}
-    .col{flex:1}
-    table{width:100%;border-collapse:collapse;margin-top:12px}
-    th,td{padding:8px;border-bottom:1px solid #0f2433;font-size:13px;text-align:left}
-    th{color:#7fa0bf}
-    .green{color:#8de57d;font-weight:700}
-    .red{color:#ff8a8a;font-weight:700}
-    .muted{color:#84a2bd;font-size:13px}
-    .small{width:120px}
+    :root{
+      --bg:#0f172a; --card:#0b1220; --accent:#2563eb; --muted:#94a3b8; --text:#e6eef8;
+      --glass: rgba(255,255,255,0.03);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+    html,body{height:100%}
+    body{
+      margin:0; padding:28px; background:linear-gradient(180deg,#071025 0%, #071427 100%); color:var(--text);
+      -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+    }
+    .container{max-width:1100px;margin:0 auto}
+    header{display:flex;gap:16px;align-items:center; margin-bottom:18px}
+    h1{margin:0;font-size:20px;color:var(--accent)}
+    p.lead{margin:0;color:var(--muted);font-size:13px}
+
+    .controls{display:flex;gap:8px;align-items:center;margin:16px 0;flex-wrap:wrap}
+    .btn{
+      background:var(--accent); color:white; border:0; padding:8px 12px;border-radius:8px; cursor:pointer;
+      font-weight:600; box-shadow:0 4px 14px rgba(37,99,235,0.12);
+    }
+    .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06); color:var(--text)}
+    .input{background:var(--card); border:1px solid rgba(255,255,255,0.04); padding:8px 10px; border-radius:8px; color:var(--text)}
+    .small{font-size:13px;padding:6px 8px}
+
+    .status{
+      margin-left:auto; font-size:13px; color:var(--muted);
+      display:flex; gap:8px; align-items:center;
+    }
+    .status .dot{width:10px;height:10px;border-radius:50%;background:#f97316; display:inline-block}
+
+    .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border-radius:12px; padding:14px; box-shadow: 0 8px 30px rgba(2,6,23,0.6)}
+    table{width:100%;border-collapse:collapse; margin-top:10px; font-size:13px}
+    thead th{position:sticky; top:0; background:linear-gradient(180deg, rgba(9,11,18,0.9), rgba(9,11,18,0.85)); text-align:left; padding:10px; font-size:12px; color:var(--muted)}
+    tbody td{padding:10px;border-top:1px solid rgba(255,255,255,0.03); color:var(--text)}
+    tbody tr:hover{background:rgba(255,255,255,0.01)}
+    .dex-label{display:inline-block;padding:4px 8px;border-radius:999px;font-size:12px;color:white}
+    .quick{background:#2563eb}
+    .uni{background:#9333ea}
+    .link{color:var(--accent); text-decoration:none; font-weight:600}
+    .muted{color:var(--muted)}
+    .center{text-align:center}
+    .empty{padding:24px;color:var(--muted);text-align:center}
+
+    /* pagination */
+    .pager{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:10px}
+    .pager .page{background:transparent;border:1px solid rgba(255,255,255,0.04);padding:6px 8px;border-radius:6px; cursor:pointer;color:var(--text)}
+    .page.active{background:var(--accent); color:white}
+
+    /* small responsive */
+    @media (max-width:820px){
+      thead th:nth-child(3), tbody td:nth-child(3),
+      thead th:nth-child(4), tbody td:nth-child(4) { display:none }
+    }
   </style>
 </head>
 <body>
-  <h1>WPOL Arbitrage Route Scanner (3–4 hop)</h1>
-  <p class="muted">WPOL dipakai sebagai token awal & akhir otomatis. Hanya mendeteksi (tidak eksekusi).</p>
+  <div class="container">
+    <header>
+      <div>
+        <h1>RTMX Liquidity Dashboard</h1>
+        <p class="lead">Sumber: Google Sheets — live snapshot likuiditas RTMX per pair. Cocok untuk monitoring & route discovery.</p>
+      </div>
 
-  <label>RPC (ganti jika ada CORS/rate limit)</label>
-  <input id="rpc" value="https://polygon-rpc.com" />
+      <div class="status">
+        <span id="lastFetch" class="muted">—</span>
+        <div class="dot" id="fetchDot" style="background:#f97316"></div>
+      </div>
+    </header>
 
-  <div class="row">
-    <div class="col">
-      <label>Jumlah WPOL untuk uji (mis. 1)</label>
-      <input id="amount" value="1" />
-    </div>
-    <div class="col small">
-      <label>Delay ms / call</label>
-      <input id="delay" value="200" />
-    </div>
-    <div class="col small">
-      <label>Tampilkan hanya profitable?</label>
-      <select id="filterProfitable"><option value="false">Tidak</option><option value="true">Ya</option></select>
-    </div>
+    <section class="card">
+      <div class="controls">
+        <input id="search" class="input small" placeholder="Cari pair / token / dex..." />
+        <select id="sortBy" class="input small">
+          <option value="none">Sort: Default</option>
+          <option value="rtmx_desc">RTMX Reserve ↓</option>
+          <option value="rtmx_asc">RTMX Reserve ↑</option>
+          <option value="token_desc">Token Reserve ↓</option>
+          <option value="token_asc">Token Reserve ↑</option>
+        </select>
+
+        <label style="display:flex;align-items:center;gap:6px">
+          <input id="autoRefresh" type="checkbox" checked /> <span class="muted" style="font-size:13px">Auto refresh</span>
+        </label>
+
+        <input id="interval" class="input small" type="number" min="10" value="60" style="width:88px" title="Interval detik" />
+        <button id="refreshBtn" class="btn">Refresh now</button>
+
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <button id="downloadCsv" class="btn ghost">Download CSV</button>
+          <button id="openSheet" class="btn ghost">Open Sheet</button>
+        </div>
+      </div>
+
+      <div style="overflow:auto">
+        <table id="dataTable" aria-live="polite">
+          <thead>
+            <tr>
+              <th style="width:120px">DEX</th>
+              <th>Pair</th>
+              <th style="width:150px">RTMX Reserve</th>
+              <th style="width:150px">Token Reserve</th>
+              <th style="width:220px">Pair Address</th>
+              <th style="width:160px">Updated</th>
+            </tr>
+          </thead>
+          <tbody id="tbody">
+            <tr><td colspan="6" class="empty">Memuat data…</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="pager" id="pagerWrap" style="display:none">
+        <div id="pagerButtons"></div>
+      </div>
+    </section>
+
+    <footer style="margin-top:14px;color:var(--muted);font-size:13px">
+      Template by ChatGPT — gunakan bersama Google Apps Script yang mem-push data ke sheet. Pastikan sheet diset sebagai "Anyone with link - Viewer".
+    </footer>
   </div>
 
-  <div style="margin-top:10px">
-    <button id="start">🔎 Mulai Scan (3–4 hop)</button>
-    <button id="clear">Clear</button>
-    <span id="status" class="muted" style="margin-left:12px">Status: idle</span>
-  </div>
-
-  <table id="tbl" style="display:none">
-    <thead><tr>
-      <th>#</th><th>Route (nama token)</th><th>Output (WPOL)</th><th>Profit</th><th>Profit %</th><th>Note</th>
-    </tr></thead>
-    <tbody id="tb"></tbody>
-  </table>
-
-  <p class="muted" style="margin-top:12px">
-    Catatan: WPOL = Wrapped MATIC (18 decimals). RPC publik dapat ubah CORS atau rate-limit — kalau error, ganti ke LlamaRPC / 1rpc / gunakan proxy.
-  </p>
-
-  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
   <script>
-    (async()=> {
-      const WPOL = "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270".toLowerCase();
-      // Daftar token populer (alamat -> symbol)
-      const TOKENS = {
-        "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270":"WPOL",
-        "0xc2132d05d31c914a87c6611c10748aeb04b58e8f":"USDT",
-        "0x8f3cf7ad23cd3cadbd9735aff958023239c6a063":"DAI",
-        "0x7ceb23fd6bC0adD59E62ac25578270cFf1b9f619":"WETH",
-        "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174":"USDC",
-        // tambah token lain yg mau kamu cek
-      };
-      // lowercase mapping for easy lookup
-      const TOKEN_SYMBOL = Object.fromEntries(Object.entries(TOKENS).map(([k,v])=>[k.toLowerCase(),v]));
+    // === CONFIG ===
+    const SPREADSHEET_ID = '1IT7sHQQqSjyWnJLPMNi9fQQSb9-pRB7R5sr03-E0nug'; // sudah dari kamu
+    const GVIZ_URL = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json`;
+    const PAGE_SIZE = 25;
 
-      const routerAddr = "0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff"; // QuickSwap V2 Router
-      const routerABI = ["function getAmountsOut(uint amountIn, address[] calldata path) view returns (uint[] memory amounts)"];
+    // UI refs
+    const tbody = document.getElementById('tbody');
+    const lastFetchEl = document.getElementById('lastFetch');
+    const fetchDot = document.getElementById('fetchDot');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const autoRefresh = document.getElementById('autoRefresh');
+    const intervalInput = document.getElementById('interval');
+    const searchInput = document.getElementById('search');
+    const sortSelect = document.getElementById('sortBy');
+    const pagerWrap = document.getElementById('pagerWrap');
+    const pagerButtons = document.getElementById('pagerButtons');
+    const downloadCsv = document.getElementById('downloadCsv');
+    const openSheet = document.getElementById('openSheet');
 
-      const startBtn = document.getElementById('start');
-      const clearBtn = document.getElementById('clear');
-      const statusEl = document.getElementById('status');
-      const tbl = document.getElementById('tbl');
-      const tb = document.getElementById('tb');
+    // state
+    let rawRows = []; // array of arrays
+    let filtered = [];
+    let currentPage = 1;
+    let refreshTimer = null;
 
-      function setStatus(t){ statusEl.innerText = 'Status: '+t; }
+    // helpers
+    function setStatusLoading(loading){
+      if(loading){
+        lastFetchEl.textContent = 'Memuat...';
+        fetchDot.style.background = '#f97316';
+      } else {
+        fetchDot.style.background = '#10b981';
+      }
+    }
 
-      function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+    function formatNumber(val){
+      if(val === null || val === '' || isNaN(Number(val))) return '-';
+      const n = Number(val);
+      if(Math.abs(n) >= 1) return n.toLocaleString(undefined, {maximumFractionDigits: 6});
+      return n.toPrecision(6);
+    }
 
-      startBtn.addEventListener('click', async ()=>{
-        const rpc = document.getElementById('rpc').value.trim();
-        const amount = document.getElementById('amount').value.trim() || "1";
-        const delayMs = parseInt(document.getElementById('delay').value || "200");
-        const onlyProfit = document.getElementById('filterProfitable').value === 'true';
+    function toPolygonscanLink(addr){
+      if(!addr) return '';
+      return `https://polygonscan.com/address/${addr}`;
+    }
 
-        // provider & router
-        setStatus('Connecting RPC...');
-        let provider;
-        try {
-          provider = new ethers.providers.JsonRpcProvider(rpc);
-          await provider.getBlockNumber();
-        } catch (e) {
-          console.error(e);
-          alert('RPC connection failed. Cek console / ganti RPC.');
-          setStatus('RPC error');
-          return;
-        }
-        const router = new ethers.Contract(routerAddr, routerABI, provider);
+    function parseGviz(text){
+      // Google returns: /**/google.visualization.Query.setResponse(...);
+      const jsonText = text.trim().replace(/^[\s\S]*?setResponse\(/,'').replace(/\);?$/,'');
+      return JSON.parse(jsonText);
+    }
 
-        // build intermediate list (exclude WPOL)
-        const intermediates = Object.keys(TOKENS).map(k=>k.toLowerCase()).filter(a=>a!==WPOL);
+    async function fetchSheet(){
+      try {
+        setStatusLoading(true);
+        const res = await fetch(GVIZ_URL, {cache: 'no-store'});
+        const txt = await res.text();
+        const json = parseGviz(txt);
 
-        // construct routes 3-4 hop, ensure no identical adjacent addresses and no duplicate token in same path (optional)
-        const routes = [];
+        // rows: json.table.rows; cols are in json.table.cols
+        const rows = (json.table.rows || []).map(r => (r.c || []).map(c => {
+          // c may be null or {v:..., f:...}
+          if(!c) return '';
+          return (typeof c.v === 'object' && c.v !== null && c.v.hasOwnProperty('v')) ? c.v.v : c.v;
+        }));
 
-        // 3-hop: WPOL -> A -> B -> WPOL (A != B)
-        for (let i=0;i<intermediates.length;i++){
-          for (let j=0;j<intermediates.length;j++){
-            if (i===j) continue;
-            const A = intermediates[i], B = intermediates[j];
-            if (A===WPOL||B===WPOL) continue;
-            routes.push([WPOL, A, B, WPOL]);
-          }
-        }
-        // 4-hop: WPOL -> A -> B -> C -> WPOL (A,B,C distinct)
-        for (let i=0;i<intermediates.length;i++){
-          for (let j=0;j<intermediates.length;j++){
-            for (let k=0;k<intermediates.length;k++){
-              if (i===j||j===k||i===k) continue;
-              const A=intermediates[i], B=intermediates[j], C=intermediates[k];
-              routes.push([WPOL, A, B, C, WPOL]);
-            }
-          }
-        }
+        rawRows = rows;
+        const now = new Date();
+        lastFetchEl.textContent = 'Terakhir: ' + now.toLocaleString();
+        setStatusLoading(false);
+        applyFilterAndRender();
+      } catch (err) {
+        console.error('fetchSheet error', err);
+        lastFetchEl.textContent = 'Error memuat data';
+        setStatusLoading(false);
+        tbody.innerHTML = `<tr><td colspan="6" class="empty">Gagal ambil data — cek permission sheet & koneksi.</td></tr>`;
+      }
+    }
 
-        // parse input amount (assume WPOL decimals = 18)
-        let amountInWei;
-        try { amountInWei = ethers.utils.parseUnits(amount, 18); }
-        catch(e){ alert('Invalid amount'); return; }
-
-        tb.innerHTML = ''; tbl.style.display='table';
-        setStatus(`Scanning ${routes.length} routes...`);
-
-        const results = [];
-        let idx = 0;
-        for (const path of routes) {
-          idx++;
-          setStatus(`Scanning ${idx}/${routes.length} (${path.length-2} hop)...`);
-          // skip paths with identical adjacent addresses (should not happen given construction)
-          let skip=false;
-          for (let s=0;s<path.length-1;s++){
-            if (path[s]===path[s+1]) { skip=true; break; }
-          }
-          if (skip) continue;
-
-          try {
-            const amounts = await router.getAmountsOut(amountInWei, path);
-            const finalOut = amounts[amounts.length-1];
-            const outHuman = parseFloat(ethers.utils.formatUnits(finalOut, 18));
-            const inHuman = parseFloat(amount);
-            const profit = outHuman - inHuman;
-            const profitPct = (profit / inHuman) * 100;
-
-            // map names
-            const names = path.map(a => TOKEN_SYMBOL[a.toLowerCase()] || (a===WPOL ? 'WPOL' : 'UNK'));
-
-            // optional filter: only show profitable if toggle on
-            if (onlyProfit && profitPct <= 0) {
-              // skip
-            } else {
-              results.push({path:names,out:outHuman,profit,profitPct});
-              // render row
-              const tr = document.createElement('tr');
-              const note = profitPct>0 ? `<span class="green">Profitable</span>` : `<span class="red">No profit</span>`;
-              tr.innerHTML = `<td>${tb.children.length+1}</td>
-                <td style="font-family:monospace">${names.join(' → ')}</td>
-                <td>${outHuman.toFixed(8)}</td>
-                <td>${profit>0?profit.toFixed(8):profit.toFixed(8)}</td>
-                <td>${profitPct>0?profitPct.toFixed(4)+'%':profitPct.toFixed(4)+'%'}</td>
-                <td>${note}</td>`;
-              tb.appendChild(tr);
-            }
-          } catch(e) {
-            // ignore paths with no liquidity or revert (common)
-          }
-          await sleep(delayMs);
-        }
-
-        // highlight best if exists
-        if (tb.children.length>0) {
-          // optionally scroll / focus
-        } else {
-          // nothing found
-        }
-        setStatus('Finished scan');
+    // filtering, sorting, pagination
+    function applyFilterAndRender(){
+      const q = (searchInput.value || '').trim().toLowerCase();
+      filtered = rawRows.filter(r => {
+        // join cells to search
+        const line = (r.join(' ') || '').toLowerCase();
+        return !q || line.includes(q);
       });
 
-      clearBtn.addEventListener('click', ()=>{ tb.innerHTML=''; tbl.style.display='none'; setStatus('Cleared'); });
+      // sort
+      const sortMode = sortSelect.value;
+      if(sortMode !== 'none') {
+        const [field, dir] = sortMode.split('_'); // rtmx_desc etc
+        const idx = field === 'rtmx' ? 2 : (field === 'token' ? 3 : -1);
+        if(idx >= 0){
+          filtered.sort((a,b) => {
+            const va = Number(a[idx]) || 0;
+            const vb = Number(b[idx]) || 0;
+            return dir === 'desc' ? vb - va : va - vb;
+          });
+        }
+      }
 
+      currentPage = 1;
+      renderPage();
+    }
+
+    function renderPage(){
+      const total = filtered.length;
+      if(total === 0){
+        tbody.innerHTML = `<tr><td colspan="6" class="empty">Tidak ada data</td></tr>`;
+        pagerWrap.style.display = 'none';
+        return;
+      }
+
+      const pages = Math.ceil(total / PAGE_SIZE);
+      if(currentPage > pages) currentPage = pages;
+      const start = (currentPage - 1) * PAGE_SIZE;
+      const pageRows = filtered.slice(start, start + PAGE_SIZE);
+
+      tbody.innerHTML = '';
+      for(const r of pageRows){
+        const dex = r[0] || '';
+        const pair = r[1] || '';
+        const rtmx = formatNumber(r[2]);
+        const token = formatNumber(r[3]);
+        const addr = r[4] || '';
+        const updated = r[5] || '';
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><span class="dex-label ${dex.toLowerCase().includes('quick') ? 'quick' : (dex.toLowerCase().includes('uni') ? 'uni' : '')}">${dex || ''}</span></td>
+          <td>${pair}</td>
+          <td>${rtmx} RTMX</td>
+          <td>${token}</td>
+          <td>${addr ? `<a class="link" href="${toPolygonscanLink(addr)}" target="_blank" rel="noopener noreferrer">${addr.substring(0,8)}...${addr.slice(-6)}</a>` : '-'}</td>
+          <td class="muted">${updated}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+
+      // render pager
+      renderPager(pages);
+    }
+
+    function renderPager(totalPages){
+      pagerWrap.style.display = totalPages > 1 ? 'flex' : 'none';
+      pagerButtons.innerHTML = '';
+
+      const visible = 7; // max buttons shown
+      let start = Math.max(1, currentPage - Math.floor(visible/2));
+      let end = Math.min(totalPages, start + visible - 1);
+      if(end - start < visible - 1) start = Math.max(1, end - visible + 1);
+
+      if(start > 1){
+        const btn = createPageButton(1, '1');
+        pagerButtons.appendChild(btn);
+        if(start > 2) {
+          const dots = document.createElement('span'); dots.style.margin='0 6px'; dots.textContent='...'; pagerButtons.appendChild(dots);
+        }
+      }
+
+      for(let i=start;i<=end;i++){
+        pagerButtons.appendChild(createPageButton(i));
+      }
+
+      if(end < totalPages){
+        if(end < totalPages - 1) {
+          const dots2 = document.createElement('span'); dots2.style.margin='0 6px'; dots2.textContent='...'; pagerButtons.appendChild(dots2);
+        }
+        pagerButtons.appendChild(createPageButton(totalPages, String(totalPages)));
+      }
+    }
+
+    function createPageButton(page, label){
+      const btn = document.createElement('button');
+      btn.className = 'page' + (page === currentPage ? ' active' : '');
+      btn.textContent = label || page;
+      btn.onclick = () => { currentPage = page; renderPage(); };
+      return btn;
+    }
+
+    // events
+    refreshBtn.addEventListener('click', () => fetchSheet());
+    searchInput.addEventListener('input', debounce(applyFilterAndRender, 250));
+    sortSelect.addEventListener('change', applyFilterAndRender);
+
+    downloadCsv.addEventListener('click', () => {
+      // build csv from rawRows
+      if(!rawRows.length) return alert('Belum ada data.');
+      const csv = [ ['DEX','Pair','RTMX Reserve','Token Reserve','Pair Address','Updated'], ...rawRows ].map(r => r.map(cell => `"${String(cell || '').replace(/"/g,'""')}"`).join(',')).join('\n');
+      const blob = new Blob([csv], {type:'text/csv'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `rtmx_liquidity_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.csv`;
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    });
+
+    openSheet.addEventListener('click', () => {
+      window.open(`https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/edit`, '_blank');
+    });
+
+    // auto refresh
+    function startAutoRefresh(){
+      stopAutoRefresh();
+      if(autoRefresh.checked){
+        const sec = Math.max(10, Number(intervalInput.value) || 60);
+        refreshTimer = setInterval(fetchSheet, sec * 1000);
+      }
+    }
+    function stopAutoRefresh(){
+      if(refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+    }
+    autoRefresh.addEventListener('change', () => {
+      if(autoRefresh.checked) startAutoRefresh(); else stopAutoRefresh();
+    });
+    intervalInput.addEventListener('change', () => {
+      if(autoRefresh.checked) startAutoRefresh();
+    });
+
+    // util: debounce
+    function debounce(fn, wait){ let t; return (...args) => { clearTimeout(t); t = setTimeout(()=>fn(...args), wait); }; }
+
+    // initial load
+    (function init(){
+      fetchSheet();
+      startAutoRefresh();
     })();
   </script>
 </body>
