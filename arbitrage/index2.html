@@ -276,6 +276,7 @@
               <th style="width:150px">Token Reserve</th>
               <th style="width:220px">Pair Address</th>
               <th style="width:160px">Updated</th>
+              <th style="width:160px">Total Liquidity</th>
             </tr>
           </thead>
           <tbody id="tbody">
@@ -485,7 +486,7 @@
     downloadCsv.addEventListener('click', () => {
       // build csv from rawRows
       if(!rawRows.length) return alert('Belum ada data.');
-      const csv = [ ['DEX','Pair','RTMX Reserve','Token Reserve','Pair Address','Updated'], ...rawRows ].map(r => r.map(cell => `"${String(cell || '').replace(/"/g,'""')}"`).join(',')).join('\n');
+      const csv = [ ['DEX','Pair','RTMX Reserve','Token Reserve','Pair Address','Updated','Total Liquidity'], ...rawRows ].map(r => r.map(cell => `"${String(cell || '').replace(/"/g,'""')}"`).join(',')).join('\n');
       const blob = new Blob([csv], {type:'text/csv'});
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
